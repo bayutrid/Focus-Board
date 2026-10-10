@@ -11,13 +11,18 @@ import {
   setTasks,
   updateTask,
 } from "./tasks.js";
-import { loadTasks, saveTasks } from "./storage.js";
+import {
+  loadTasks,
+  parseTaskExport,
+  saveTasks,
+  serializeTaskExport,
+} from "./storage.js";
 
 const storageLoadResult = loadTasks();
 if (storageLoadResult.status === "loaded") {
   setTasks(storageLoadResult.tasks);
 }
-// Keep unreadable saved data untouched until a deliberate recovery action exists.
+// Preserve corrupt or invalid saved data until a valid restore succeeds.
 let storageWritesAllowed = !["corrupt", "invalid"].includes(storageLoadResult.status);
 let storageWriteFailed = false;
 
@@ -40,6 +45,9 @@ const sortSelect = searchAndFiltersForm.elements.sort;
 const clearFiltersButton = document.querySelector("#clear-task-filters");
 const taskResultsMessage = document.querySelector("#task-results-message");
 const storageMessage = document.querySelector("#storage-message");
+const exportTasksButton = document.querySelector("#export-tasks");
+const restoreFileInput = document.querySelector("#restore-file");
+const portabilityMessage = document.querySelector("#portability-message");
 let editingTaskId = null;
 let isSubmitting = false;
 
@@ -252,6 +260,95 @@ function showStorageMessage(message) {
   storageMessage.textContent = message;
   storageMessage.hidden = !message;
 }
+
+function showPortabilityMessage(message) {
+  portabilityMessage.textContent = message;
+  portabilityMessage.hidden = !message;
+}
+
+function getLocalDateString(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+exportTasksButton.addEventListener("click", () => {
+  let objectUrl = null;
+  let downloadLink = null;
+
+  try {
+    const exportText = serializeTaskExport(getTasks());
+    const exportFile = new Blob([exportText], { type: "application/json" });
+    objectUrl = URL.createObjectURL(exportFile);
+
+    downloadLink = document.createElement("a");
+    downloadLink.href = objectUrl;
+    downloadLink.download = `focusboard-tasks-${getLocalDateString()}.json`;
+    downloadLink.hidden = true;
+    document.body.append(downloadLink);
+    downloadLink.click();
+    showPortabilityMessage("Tasks exported successfully.");
+  } catch {
+    showPortabilityMessage("Export failed. Your tasks were not changed.");
+  } finally {
+    downloadLink?.remove();
+    if (objectUrl) {
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+    }
+  }
+});
+
+restoreFileInput.addEventListener("change", async () => {
+  const file = restoreFileInput.files?.[0];
+  if (!file) {
+    return;
+  }
+
+  try {
+    let fileText;
+    try {
+      fileText = await file.text();
+    } catch {
+      showPortabilityMessage("Could not read the selected file. Your current tasks were not changed.");
+      return;
+    }
+
+    const result = parseTaskExport(fileText);
+    if (!result.ok) {
+      const message = result.error === "invalid-json"
+        ? "The selected file is not valid JSON. Your current tasks were not changed."
+        : "This file is not a supported FocusBoard export. Your current tasks were not changed.";
+      showPortabilityMessage(message);
+      return;
+    }
+
+    if (!window.confirm("Restore tasks from this file? This will replace all current tasks.")) {
+      return;
+    }
+
+    const saveResult = saveTasks(result.tasks);
+    if (!saveResult.ok) {
+      showPortabilityMessage("Restore could not be saved. Your current tasks were not changed.");
+      return;
+    }
+
+    setTasks(result.tasks);
+    storageWritesAllowed = true;
+    storageWriteFailed = false;
+    showStorageMessage("");
+
+    searchInput.value = "";
+    statusFilter.value = "all";
+    priorityFilter.value = "all";
+    sortSelect.value = "default";
+    resetTaskForm();
+    renderDashboard(getTasks());
+    showPortabilityMessage("Tasks restored successfully.");
+  } finally {
+    restoreFileInput.value = "";
+  }
+});
 
 function saveCurrentTasks() {
   if (!storageWritesAllowed) {

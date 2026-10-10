@@ -38,6 +38,13 @@
         <h2 id="tasks-heading">Tasks</h2>
         <p id="storage-message" role="status" aria-live="polite" hidden></p>
 
+        <div class="task-portability-controls" aria-label="Task data portability">
+          <button id="export-tasks" type="button">Export tasks</button>
+          <label for="restore-file">Restore tasks</label>
+          <input id="restore-file" name="restoreFile" type="file" accept=".json,application/json">
+        </div>
+        <p id="portability-message" role="status" aria-live="polite" hidden></p>
+
         <form id="task-form" aria-labelledby="task-form-heading">
           <h3 id="task-form-heading">Add a task</h3>
 

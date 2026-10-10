@@ -16,6 +16,8 @@ FocusBoard is a small personal productivity dashboard for creating and tracking 
 - See different messages when the board is empty or a search/filter has no matches
 - View total, in progress, and completed task counts
 - Save tasks in browser `localStorage`
+- Export all tasks to a versioned JSON file
+- Restore tasks from a valid FocusBoard JSON export after confirming replacement
 
 ## Technologies
 
@@ -61,6 +63,8 @@ Use the form to add a task, choose its status and priority, and set an optional 
 
 Tasks are stored in this browser's local storage, so they remain after reloading the page in the same browser.
 
+Use **Export tasks** to download all tasks as a JSON file. Use **Restore tasks** to select a FocusBoard export. The app validates the complete file and asks for confirmation before replacing the current task list.
+
 ## Current Status
 
-FocusBoard is an ongoing beginner-level project at the MVP stage. The core task management features, due-date labels, simple sorting, improved empty states, and responsive layout are implemented. Due-date filtering, progress percentage, and undo delete are not currently available.
+FocusBoard is an ongoing beginner-level project at the MVP stage. The core task management features, due-date labels, simple sorting, improved empty states, responsive layout, and local JSON export/restore are implemented. Due-date filtering, progress percentage, and undo delete are not currently available.
