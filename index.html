@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="A simple personal dashboard for organizing tasks and tracking progress.">
+    <title>FocusBoard</title>
+    <link rel="stylesheet" href="styles/main.css">
+  </head>
+  <body>
+    <header>
+      <a href="index.html" aria-label="FocusBoard home">FocusBoard</a>
+      <p>Personal task dashboard</p>
+    </header>
+
+    <main>
+      <section aria-labelledby="dashboard-heading">
+        <h1 id="dashboard-heading">Your focus board</h1>
+        <p>Plan your work, keep track of progress, and take the next step.</p>
+
+        <section aria-label="Task progress">
+          <article>
+            <h2>Total tasks</h2>
+            <p id="total-task-count">0</p>
+          </article>
+          <article>
+            <h2>In progress</h2>
+            <p id="in-progress-count">0</p>
+          </article>
+          <article>
+            <h2>Completed</h2>
+            <p id="completed-task-count">0</p>
+          </article>
+        </section>
+      </section>
+
+      <section aria-labelledby="tasks-heading">
+        <h2 id="tasks-heading">Tasks</h2>
+        <p id="storage-message" role="status" aria-live="polite" hidden></p>
+
+        <form id="task-form" aria-labelledby="task-form-heading">
+          <h3 id="task-form-heading">Add a task</h3>
+
+          <label for="task-title">Title <span aria-hidden="true">*</span></label>
+          <input id="task-title" name="title" type="text" required maxlength="120" autocomplete="off">
+
+          <label for="task-description">Description</label>
+          <textarea id="task-description" name="description" rows="3" maxlength="500"></textarea>
+
+          <label for="task-status">Status</label>
+          <select id="task-status" name="status">
+            <option value="todo" selected>Todo</option>
+            <option value="doing">Doing</option>
+            <option value="done">Done</option>
+          </select>
+
+          <label for="task-priority">Priority</label>
+          <select id="task-priority" name="priority">
+            <option value="low">Low</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High</option>
+          </select>
+
+          <label for="task-due-date">Due date</label>
+          <input id="task-due-date" name="dueDate" type="date">
+
+          <div class="task-form-actions">
+            <button id="task-submit" type="submit">Add task</button>
+            <button id="task-cancel" type="button" hidden>Cancel edit</button>
+          </div>
+          <p id="task-form-message" role="status" aria-live="polite"></p>
+        </form>
+
+        <form aria-label="Search and filter tasks">
+          <label for="task-search">Search tasks</label>
+          <input id="task-search" name="search" type="search">
+
+          <label for="status-filter">Status</label>
+          <select id="status-filter" name="status">
+            <option value="all">All statuses</option>
+            <option value="todo">Todo</option>
+            <option value="doing">Doing</option>
+            <option value="done">Done</option>
+          </select>
+
+          <label for="priority-filter">Priority</label>
+          <select id="priority-filter" name="priority">
+            <option value="all">All priorities</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+
+          <label for="task-sort">Sort by</label>
+          <select id="task-sort" name="sort">
+            <option value="default" selected>Default</option>
+            <option value="due-date">Due date: Soonest</option>
+            <option value="priority">Priority: High to Low</option>
+          </select>
+          <button id="clear-task-filters" type="button">Clear search and filters</button>
+        </form>
+
+        <p id="task-results-message" role="status" aria-live="polite" hidden></p>
+
+        <div id="task-board">
+          <section aria-labelledby="todo-heading">
+            <h3 id="todo-heading">Todo</h3>
+            <p>No tasks yet.</p>
+          </section>
+
+          <section aria-labelledby="doing-heading">
+            <h3 id="doing-heading">Doing</h3>
+            <p>No tasks in progress.</p>
+          </section>
+
+          <section aria-labelledby="done-heading">
+            <h3 id="done-heading">Done</h3>
+            <p>No completed tasks.</p>
+          </section>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="scripts/app.js"></script>
+  </body>
+</html>
