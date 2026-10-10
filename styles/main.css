@@ -113,10 +113,10 @@ main > section[aria-labelledby="tasks-heading"] {
 
 form[aria-label="Search and filter tasks"] {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.25fr) repeat(4, minmax(0, 1fr));
   grid-template-areas:
-    "search-label status-label priority-label sort-label"
-    "search status priority sort";
+    "search-label status-label priority-label due-label sort-label"
+    "search status priority due sort";
   gap: 0.5rem 1rem;
   margin-bottom: 1.5rem;
   padding: 1rem;
@@ -131,6 +131,8 @@ form[aria-label="Search and filter tasks"] label[for="status-filter"] { grid-are
 form[aria-label="Search and filter tasks"] #status-filter { grid-area: status; }
 form[aria-label="Search and filter tasks"] label[for="priority-filter"] { grid-area: priority-label; }
 form[aria-label="Search and filter tasks"] #priority-filter { grid-area: priority; }
+form[aria-label="Search and filter tasks"] label[for="due-date-filter"] { grid-area: due-label; }
+form[aria-label="Search and filter tasks"] #due-date-filter { grid-area: due; }
 form[aria-label="Search and filter tasks"] label[for="task-sort"] { grid-area: sort-label; }
 form[aria-label="Search and filter tasks"] #task-sort { grid-area: sort; }
 form[aria-label="Search and filter tasks"] button {
@@ -163,6 +165,21 @@ button:focus-visible {
   color: #354256;
   background: var(--color-accent-soft);
   border-radius: 9px;
+}
+
+#active-filter-summary {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  color: #354256;
+  background: var(--color-accent-soft);
+  border: 1px solid #cdd9ff;
+  border-radius: 9px;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+#active-filter-summary[hidden] {
+  display: none;
 }
 
 #task-results-message[hidden] {
@@ -538,6 +555,19 @@ a:focus-visible {
   }
 }
 
+@media (min-width: 601px) and (max-width: 1000px) {
+  form[aria-label="Search and filter tasks"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      "search-label status-label"
+      "search status"
+      "priority-label due-label"
+      "priority due"
+      "sort-label sort-label"
+      "sort sort";
+  }
+}
+
 @media (max-width: 600px) {
   header {
     align-items: flex-start;
@@ -596,6 +626,8 @@ a:focus-visible {
       "status"
       "priority-label"
       "priority"
+      "due-label"
+      "due"
       "sort-label"
       "sort";
     gap: 0.4rem;

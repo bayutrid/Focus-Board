@@ -88,10 +88,27 @@ export function matchesPriority(task, selectedPriority) {
   return selectedPriority === "all" || task.priority === selectedPriority;
 }
 
-export function getVisibleTasks(taskList, filters) {
+export function getVisibleTasks(taskList, filters, today = new Date()) {
   const searchResults = taskList.filter((task) => matchesSearch(task, filters.search));
   const statusResults = searchResults.filter((task) => matchesStatus(task, filters.status));
-  return statusResults.filter((task) => matchesPriority(task, filters.priority));
+  const priorityResults = statusResults.filter((task) => matchesPriority(task, filters.priority));
+  const dueDateFilter = filters.dueDate || "all";
+
+  if (!["overdue", "today", "upcoming", "no-due-date"].includes(dueDateFilter)) {
+    return priorityResults;
+  }
+
+  return priorityResults.filter((task) => {
+    if (task.status === "done") {
+      return false;
+    }
+
+    if (dueDateFilter === "no-due-date") {
+      return !task.dueDate;
+    }
+
+    return getDueDateStatus(task, today) === dueDateFilter;
+  });
 }
 
 export function sortTasks(taskList, sortBy) {

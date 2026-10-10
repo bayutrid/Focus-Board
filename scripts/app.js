@@ -41,8 +41,10 @@ const searchAndFiltersForm = document.querySelector('[aria-label="Search and fil
 const searchInput = searchAndFiltersForm.elements.search;
 const statusFilter = searchAndFiltersForm.elements.status;
 const priorityFilter = searchAndFiltersForm.elements.priority;
+const dueDateFilter = searchAndFiltersForm.elements.dueDate;
 const sortSelect = searchAndFiltersForm.elements.sort;
 const clearFiltersButton = document.querySelector("#clear-task-filters");
+const activeFilterSummary = document.querySelector("#active-filter-summary");
 const taskResultsMessage = document.querySelector("#task-results-message");
 const storageMessage = document.querySelector("#storage-message");
 const exportTasksButton = document.querySelector("#export-tasks");
@@ -104,7 +106,7 @@ function createTaskCard(task) {
 
   const dueDate = document.createElement("span");
   dueDate.className = "task-due-date";
-  dueDate.textContent = `Due: ${formatDueDate(task.dueDate)}`;
+  dueDate.textContent = `Due date: ${formatDueDate(task.dueDate)}`;
   details.append(dueDate);
 
   const dueDateStatus = getDueDateStatus(task);
@@ -178,13 +180,58 @@ function getCurrentFilters() {
     search: searchInput.value,
     status: statusFilter.value,
     priority: priorityFilter.value,
+    dueDate: dueDateFilter.value,
   };
 }
 
 function hasActiveFilters(filters) {
   return Boolean(filters.search.trim())
     || filters.status !== "all"
-    || filters.priority !== "all";
+    || filters.priority !== "all"
+    || filters.dueDate !== "all";
+}
+
+function renderActiveFilterSummary(filters, sortBy, visibleCount, totalCount) {
+  const activeFilters = [];
+  const searchText = filters.search.trim();
+
+  if (searchText) activeFilters.push(`Search: "${searchText}"`);
+  if (filters.status !== "all") {
+    activeFilters.push(`Status: ${filters.status.charAt(0).toUpperCase()}${filters.status.slice(1)}`);
+  }
+  if (filters.priority !== "all") {
+    activeFilters.push(`Priority: ${filters.priority.charAt(0).toUpperCase()}${filters.priority.slice(1)}`);
+  }
+
+  const dueDateLabels = {
+    overdue: "Overdue",
+    today: "Due today",
+    upcoming: "Upcoming",
+    "no-due-date": "No due date",
+  };
+  if (filters.dueDate !== "all") {
+    activeFilters.push(`Due date: ${dueDateLabels[filters.dueDate] || "All"}`);
+  }
+
+  const hasSort = sortBy !== "default";
+  if (activeFilters.length === 0 && !hasSort) {
+    activeFilterSummary.textContent = "";
+    activeFilterSummary.hidden = true;
+    return;
+  }
+
+  const resultCount = activeFilters.length > 0
+    ? `Showing ${visibleCount} of ${totalCount} tasks.`
+    : `Showing all ${totalCount} tasks.`;
+  const filterText = activeFilters.length > 0
+    ? ` Active filters: ${activeFilters.join("; ")}.`
+    : "";
+  const sortText = hasSort
+    ? ` Sorted by ${sortSelect.options[sortSelect.selectedIndex].textContent}.`
+    : "";
+
+  activeFilterSummary.textContent = `${resultCount}${filterText}${sortText}`;
+  activeFilterSummary.hidden = false;
 }
 
 function renderTasks(visibleTasks, allTasks, filters) {
@@ -196,7 +243,7 @@ function renderTasks(visibleTasks, allTasks, filters) {
   taskResultsMessage.textContent = noTasksExist
     ? "No tasks yet. Add a task above to get started."
     : noMatches
-      ? "No tasks match your search or filters. Adjust or clear them to see tasks."
+      ? "No tasks match your current filters. Try changing or clearing your filters."
       : "";
 
   const getColumnEmptyMessage = (status) => {
@@ -224,6 +271,7 @@ function renderDashboard(taskList) {
   const filteredTasks = getVisibleTasks(taskList, filters);
   const visibleTasks = sortTasks(filteredTasks, sortSelect.value);
   renderTasks(visibleTasks, taskList, filters);
+  renderActiveFilterSummary(filters, sortSelect.value, visibleTasks.length, taskList.length);
   // Counts describe the complete collection, not the current view.
   renderProgressSummary(taskList);
 }
@@ -239,7 +287,8 @@ searchAndFiltersForm.addEventListener("input", (event) => {
 });
 
 searchAndFiltersForm.addEventListener("change", (event) => {
-  if (event.target === statusFilter || event.target === priorityFilter || event.target === sortSelect) {
+  if (event.target === statusFilter || event.target === priorityFilter
+    || event.target === dueDateFilter || event.target === sortSelect) {
     renderDashboard(getTasks());
   }
 });
@@ -248,6 +297,8 @@ clearFiltersButton.addEventListener("click", () => {
   searchInput.value = "";
   statusFilter.value = "all";
   priorityFilter.value = "all";
+  dueDateFilter.value = "all";
+  sortSelect.value = "default";
   renderDashboard(getTasks());
   searchInput.focus();
 });
@@ -341,6 +392,7 @@ restoreFileInput.addEventListener("change", async () => {
     searchInput.value = "";
     statusFilter.value = "all";
     priorityFilter.value = "all";
+    dueDateFilter.value = "all";
     sortSelect.value = "default";
     resetTaskForm();
     renderDashboard(getTasks());
