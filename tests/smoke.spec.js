@@ -1,4 +1,8 @@
 ﻿import { test, expect } from '@playwright/test';
+import fs from 'node:fs/promises';
+import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
 
 test('appLoadsOverHttpWithoutConsoleErrors', async ({ page }) => {
   const pageErrors = [];
@@ -17,11 +21,53 @@ test('appLoadsOverHttpWithoutConsoleErrors', async ({ page }) => {
   expect(pageErrors).toEqual([]);
 });
 
-test('serverReturns404AndRejectsPathsOutsideRoot', async ({ request }) => {
-  const missing = await request.get('/missing-file.js');
-  expect(missing.status()).toBe(404);
+function rawGet(requestPath) {
+  return new Promise((resolve, reject) => {
+    const request = http.get({ hostname: '127.0.0.1', port: 4173, path: requestPath }, response => {
+      const chunks = [];
+      response.on('data', chunk => chunks.push(chunk));
+      response.on('end', () => resolve({ status: response.statusCode, body: Buffer.concat(chunks).toString() }));
+    });
+    request.on('error', reject);
+  });
+}
 
-  const traversal = await request.get('/%2e%2e/%2e%2e/package.json');
-  expect(traversal.status()).toBe(404);
-  expect(await traversal.text()).not.toContain('focusboard');
+test('serverReturns404AndRejectsRawTraversalOutsideRoot', async () => {
+  const missing = await rawGet('/missing-file.js');
+  expect(missing.status).toBe(404);
+
+  const outsideFile = path.join(os.tmpdir(), 'focusboard-outside-' + process.pid + '.js');
+  try {
+    await fs.writeFile(outsideFile, 'outside-root-secret');
+    const relativePath = path.relative(process.cwd(), outsideFile).split(path.sep)
+      .map(segment => segment === '..' ? '%2e%2e' : encodeURIComponent(segment)).join('/');
+    const traversal = await rawGet('/' + relativePath);
+    expect(traversal.status).toBe(404);
+    expect(traversal.body).not.toContain('outside-root-secret');
+  } finally {
+    await fs.rm(outsideFile, { force: true });
+  }
+});
+
+test('serverRejectsSymlinkTargetsOutsideRoot', async () => {
+  const outsideDirectory = path.join(os.tmpdir(), 'focusboard-symlink-target-' + process.pid);
+  const linkPath = path.join(process.cwd(), 'tests', '.outside-root-' + process.pid);
+  try {
+    await fs.mkdir(outsideDirectory, { recursive: true });
+    await fs.writeFile(path.join(outsideDirectory, 'secret.js'), 'outside-root-secret');
+    try {
+      await fs.symlink(outsideDirectory, linkPath, 'junction');
+    } catch (error) {
+      if (error.code === 'EPERM' || error.code === 'EACCES') {
+        test.skip(true, 'This Windows environment does not permit creating test junctions.');
+      }
+      throw error;
+    }
+    const response = await rawGet('/tests/' + path.basename(linkPath) + '/secret.js');
+    expect(response.status).toBe(404);
+    expect(response.body).not.toContain('outside-root-secret');
+  } finally {
+    await fs.rm(linkPath, { recursive: true, force: true });
+    await fs.rm(outsideDirectory, { recursive: true, force: true });
+  }
 });

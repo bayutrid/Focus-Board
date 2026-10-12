@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const projectRoot = fs.realpathSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..'));
 const mimeTypes = new Map([
   ['.html', 'text/html; charset=utf-8'],
   ['.js', 'text/javascript; charset=utf-8'],
@@ -18,6 +18,12 @@ function requestedPort(args, environment) {
     throw new Error(`Invalid port: ${value}`);
   }
   return port;
+}
+
+function isWithinProjectRoot(candidatePath) {
+  const relativePath = path.relative(projectRoot, candidatePath);
+  return relativePath === ''
+    || (!path.isAbsolute(relativePath) && relativePath !== '..' && !relativePath.startsWith(`..${path.sep}`));
 }
 
 function resolveRequestPath(rawUrl) {
@@ -49,24 +55,31 @@ const server = http.createServer((request, response) => {
     return;
   }
 
-  fs.stat(filePath, (statError, stats) => {
-    if (statError || !stats.isFile()) {
+  fs.realpath(filePath, (realpathError, canonicalPath) => {
+    if (realpathError || !isWithinProjectRoot(canonicalPath)) {
       response.writeHead(404).end('Not found');
       return;
     }
 
-    const contentType = mimeTypes.get(path.extname(filePath).toLowerCase());
-    if (!contentType) {
-      response.writeHead(404).end('Not found');
-      return;
-    }
+    fs.stat(canonicalPath, (statError, stats) => {
+      if (statError || !stats.isFile()) {
+        response.writeHead(404).end('Not found');
+        return;
+      }
 
-    response.writeHead(200, { 'Content-Type': contentType });
-    if (request.method === 'HEAD') {
-      response.end();
-      return;
-    }
-    fs.createReadStream(filePath).pipe(response);
+      const contentType = mimeTypes.get(path.extname(canonicalPath).toLowerCase());
+      if (!contentType) {
+        response.writeHead(404).end('Not found');
+        return;
+      }
+
+      response.writeHead(200, { 'Content-Type': contentType });
+      if (request.method === 'HEAD') {
+        response.end();
+        return;
+      }
+      fs.createReadStream(canonicalPath).pipe(response);
+    });
   });
 });
 

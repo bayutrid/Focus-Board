@@ -443,7 +443,7 @@ function getFormFields() {
   };
 }
 
-function startEditingTask(taskId) {
+function startEditingTask(taskId, shouldFocusTitle = true) {
   const task = getTaskById(taskId);
   if (!task) {
     renderDashboard(getTasks());
@@ -461,7 +461,9 @@ function startEditingTask(taskId) {
   taskSubmitButton.textContent = "Save changes";
   taskCancelButton.hidden = false;
   showFormMessage("");
-  taskForm.elements.title.focus();
+  if (shouldFocusTitle) {
+    taskForm.elements.title.focus();
+  }
 }
 
 taskForm.addEventListener("submit", (event) => {
@@ -524,7 +526,8 @@ tasksPanel.addEventListener("click", (event) => {
 
   const { action, taskId } = button.dataset;
   if (action === "edit") {
-    startEditingTask(taskId);
+    const shouldFocusTitle = event.detail === 0 && button.matches(":focus-visible");
+    startEditingTask(taskId, shouldFocusTitle);
     return;
   }
 

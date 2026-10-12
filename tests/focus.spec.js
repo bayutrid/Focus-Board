@@ -164,3 +164,9 @@ test('deleteWithQuotedTaskIdRestoresFocusWithoutSelectorErrors', async ({ page }
   await expect(page.locator('#todo-heading')).toBeFocused();
   await expect(card(page, task.title)).toHaveCount(0);
 });
+test('mouseEditDoesNotForceFocusIntoTitle', async ({ page }) => {
+  await openBoard(page, [makeTask({ id: 'mouse-edit', title: 'Mouse edit task' })]);
+  const edit = card(page, 'Mouse edit task').getByRole('button', { name: 'Edit Mouse edit task' });
+  await edit.click();
+  await expect(page.locator('#task-title')).not.toBeFocused();
+});

@@ -131,5 +131,3 @@ test('parseTaskExportRejectsInvalidTasksDuplicateIdsAndExtraFields', () => {
   expect(parseTaskExport(JSON.stringify({ format: 'focusboard-tasks', version: 1, tasks: [taskWithExtraField] })).ok).toBe(false);  expect(validateTasks([valid, { ...valid }])).toBe(false);
   expect(parseTaskExport(JSON.stringify({ format: 'focusboard-tasks', version: 1, tasks: [valid, { ...valid }] })).ok).toBe(false);
 });
-
-

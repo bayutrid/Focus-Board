@@ -141,7 +141,3 @@ test.describe('task filters and sorting', () => {
     expect(getTasks()).toEqual(snapshot);
   });
 });
-
-
-
-

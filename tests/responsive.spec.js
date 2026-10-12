@@ -104,4 +104,3 @@ test('mobile375x812HasNoOverflowAndStackedBoardColumns', async ({ page }) => {
   expect(columns[1].top).toBeGreaterThan(columns[0].top);
   expect(columns[2].top).toBeGreaterThan(columns[1].top);
 });
-
