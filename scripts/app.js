@@ -276,6 +276,10 @@ function renderDashboard(taskList) {
   renderProgressSummary(taskList);
 }
 
+function getTaskActionButton(taskId, action) {
+  return Array.from(tasksPanel.querySelectorAll(`button[data-action="${action}"][data-task-id]`))
+    .find((button) => button.dataset.taskId === taskId) || null;
+}
 searchAndFiltersForm.addEventListener("submit", (event) => {
   event.preventDefault();
 });
@@ -300,7 +304,6 @@ clearFiltersButton.addEventListener("click", () => {
   dueDateFilter.value = "all";
   sortSelect.value = "default";
   renderDashboard(getTasks());
-  searchInput.focus();
 });
 
 function showFormMessage(message) {
@@ -499,7 +502,19 @@ taskForm.addEventListener("submit", (event) => {
   isSubmitting = false;
 });
 
-taskCancelButton.addEventListener("click", resetTaskForm);
+taskCancelButton.addEventListener("click", (event) => {
+  const shouldRestoreKeyboardFocus = event.detail === 0
+    && taskCancelButton.matches(":focus-visible");
+  const cancelledTaskId = editingTaskId;
+  resetTaskForm();
+
+  if (!shouldRestoreKeyboardFocus) {
+    return;
+  }
+
+  const editButton = getTaskActionButton(cancelledTaskId, "edit");
+  (editButton || taskForm.elements.title).focus();
+});
 
 tasksPanel.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-action][data-task-id]");
@@ -521,6 +536,15 @@ tasksPanel.addEventListener("click", (event) => {
       return;
     }
 
+    const shouldRestoreKeyboardFocus = event.detail === 0
+      && button.matches(":focus-visible");
+    const taskColumn = statusSections[task.status];
+    const visibleTaskIds = shouldRestoreKeyboardFocus
+      ? Array.from(taskColumn.querySelectorAll('button[data-action="edit"][data-task-id]'))
+        .map((editButton) => editButton.dataset.taskId)
+      : [];
+    const deletedTaskIndex = visibleTaskIds.indexOf(taskId);
+
     if (window.confirm(`Delete "${task.title}"? This cannot be undone.`)) {
       const wasDeleted = deleteTask(taskId);
       if (wasDeleted) {
@@ -530,6 +554,17 @@ tasksPanel.addEventListener("click", (event) => {
         resetTaskForm();
       }
       renderDashboard(getTasks());
+
+      if (shouldRestoreKeyboardFocus) {
+        const nextTaskId = visibleTaskIds[deletedTaskIndex + 1]
+          || visibleTaskIds[deletedTaskIndex - 1];
+        const focusTarget = nextTaskId
+          ? getTaskActionButton(nextTaskId, "edit")
+          : taskColumn.querySelector("h3");
+        focusTarget?.focus();
+      }
+    } else if (shouldRestoreKeyboardFocus && !button.matches(":focus")) {
+      button.focus();
     }
   }
 });
