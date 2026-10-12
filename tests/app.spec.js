@@ -81,14 +81,22 @@ test('deleteConfirmationDismissLeavesTaskAndStorageUnchanged', async ({ page }) 
 });
 
 test('filtersAndSortComposeWithoutChangingStoredTaskOrder', async ({ page }) => {
+  const dates = await page.evaluate(() => {
+    const futureDate = days => {
+      const date = new Date();
+      date.setDate(date.getDate() + days);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    };
+    return { soon: futureDate(2), late: futureDate(4), far: futureDate(20) };
+  });
   const tasks = [
-    makeTask({ id: 'late', title: 'Alpha review late', priority: 'high', dueDate: '2026-10-14' }),
-    makeTask({ id: 'soon', title: 'Alpha review soon', priority: 'high', dueDate: '2026-10-12' }),
-    makeTask({ id: 'search-miss', title: 'Beta review', priority: 'high', dueDate: '2026-10-12' }),
-    makeTask({ id: 'status-miss', title: 'Alpha review doing', status: 'doing', priority: 'high', dueDate: '2026-10-12' }),
-    makeTask({ id: 'priority-miss', title: 'Alpha review low', priority: 'low', dueDate: '2026-10-12' }),
-    makeTask({ id: 'date-miss', title: 'Alpha review far', priority: 'high', dueDate: '2026-11-20' }),
-    makeTask({ id: 'done', title: 'Alpha review done', status: 'done', priority: 'high', dueDate: '2026-10-12' })
+    makeTask({ id: 'late', title: 'Alpha review late', priority: 'high', dueDate: dates.late }),
+    makeTask({ id: 'soon', title: 'Alpha review soon', priority: 'high', dueDate: dates.soon }),
+    makeTask({ id: 'search-miss', title: 'Beta review', priority: 'high', dueDate: dates.soon }),
+    makeTask({ id: 'status-miss', title: 'Alpha review doing', status: 'doing', priority: 'high', dueDate: dates.soon }),
+    makeTask({ id: 'priority-miss', title: 'Alpha review low', priority: 'low', dueDate: dates.soon }),
+    makeTask({ id: 'date-miss', title: 'Alpha review far', priority: 'high', dueDate: dates.far }),
+    makeTask({ id: 'done', title: 'Alpha review done', status: 'done', priority: 'high', dueDate: dates.soon })
   ];
   await openBoard(page, tasks);
   const originalStorage = await page.evaluate(key => localStorage.getItem(key), STORAGE_KEY);
@@ -108,8 +116,13 @@ test('filtersAndSortComposeWithoutChangingStoredTaskOrder', async ({ page }) => 
 });
 
 test('clearFiltersResetsControlsWithoutChangingTasks', async ({ page }) => {
+  const upcomingDate = await page.evaluate(() => {
+    const date = new Date();
+    date.setDate(date.getDate() + 2);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  });
   const tasks = [
-    makeTask({ id: 'one', title: 'Alpha', priority: 'high', dueDate: '2026-10-12' }),
+    makeTask({ id: 'one', title: 'Alpha', priority: 'high', dueDate: upcomingDate }),
     makeTask({ id: 'two', title: 'Beta', status: 'doing', priority: 'low', dueDate: null })
   ];
   await openBoard(page, tasks);
@@ -129,9 +142,3 @@ test('clearFiltersResetsControlsWithoutChangingTasks', async ({ page }) => {
   await expect(page.locator('.task-card h4')).toHaveText(['Alpha', 'Beta']);
   expect(await page.evaluate(key => localStorage.getItem(key), STORAGE_KEY)).toBe(originalStorage);
 });
-
-
-
-
-
-
