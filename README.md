@@ -2,7 +2,7 @@
 
 ## About
 
-FocusBoard is a small personal productivity dashboard for creating and tracking tasks in the browser.
+FocusBoard is a beginner-friendly personal productivity dashboard for creating and tracking tasks in the browser.
 
 ## Features
 
@@ -12,20 +12,21 @@ FocusBoard is a small personal productivity dashboard for creating and tracking 
 - Scan status and priority badges on task cards
 - Search task titles and descriptions
 - Filter tasks by status, priority, and due date
-- See active filters, the matching task count, and the selected sort order
-- Sort the visible tasks by default order, soonest due date, or priority
-- See different messages when no tasks exist, a status column is empty, or filters have no matches
+- See active filters, matching task count, and selected sort order
+- Sort visible tasks by default order, soonest due date, or priority
+- See helpful empty states for an empty board, empty columns, or filters with no matches
 - View total, in progress, and completed task counts
 - Save tasks in browser `localStorage`
 - Export all tasks to a versioned JSON file
-- Restore tasks from a valid FocusBoard JSON export after confirming replacement
+- Restore a valid FocusBoard JSON export after confirming replacement
 
 ## Technologies
 
 - HTML5
 - CSS3
-- Vanilla JavaScript (ES modules)
+- Vanilla JavaScript ES modules
 - Browser `localStorage`
+- Playwright Test for development-only automated tests
 
 ## Project Structure
 
@@ -38,6 +39,20 @@ focusboard/
 |   |-- app.js
 |   |-- tasks.js
 |   `-- storage.js
+|-- tests/
+|   |-- support/
+|   |   |-- static-server.js
+|   |   `-- task-fixtures.js
+|   |-- app.spec.js
+|   |-- focus.spec.js
+|   |-- portability.spec.js
+|   |-- responsive.spec.js
+|   |-- smoke.spec.js
+|   |-- storage.spec.js
+|   `-- tasks.spec.js
+|-- package.json
+|-- package-lock.json
+|-- playwright.config.js
 `-- README.md
 ```
 
@@ -46,28 +61,128 @@ focusboard/
 - `scripts/app.js` connects the interface, events, rendering, and storage.
 - `scripts/tasks.js` owns task state and task operations, search, and filtering.
 - `scripts/storage.js` validates and reads or writes tasks in `localStorage`.
-- `README.md` explains the project and how to run it.
+- `tests/` contains the Node-based task and storage tests and Chromium browser tests.
+- `tests/support/static-server.js` serves the project over local HTTP without a server dependency.
+- `playwright.config.js` configures the single Chromium test project and starts the local test server.
+- `README.md` explains the project and how to run and verify it.
 
-## How to Run
+## Requirements
 
-Serve the project directory with a local static web server, then open its `index.html` address in a browser. For example, from this directory run:
+- Node.js 20 or later
+- npm (included with Node.js)
+- Chromium installed by Playwright for browser tests
+
+## Run the app
+
+From the project root, start the built-in Node HTTP server:
 
 ```sh
-python -m http.server 8000
+npm run serve
 ```
 
-Then visit `http://localhost:8000`. Serving the files is needed because the app uses JavaScript modules.
+Open <http://127.0.0.1:4173> in a browser. The server accepts a port override if port 4173 is already in use:
 
-## How to Use
+```sh
+npm run serve -- --port 4174
+```
 
-Use the form to add a task, choose its status and priority, and set an optional due date. Select Edit to change a task or Delete to remove it after confirming. Search by title or description, then combine the Status, Priority, and Due Date filters with sorting.
+In Windows PowerShell, if the `npm` or `npx` script is blocked by the execution policy, use the command shims directly:
 
-The Due Date filter includes Overdue (open tasks due before today), Due today (open tasks due today), Upcoming (open tasks due tomorrow through seven days from today), and No due date (open tasks without a due date). Done tasks do not appear in these actionable due-date filters. Choose All to remove the due-date restriction. Sorting only changes the displayed order. Select Clear filters to reset search, all filters, and sorting without changing tasks.
+```powershell
+npm.cmd run serve
+```
 
-Tasks are stored in this browser's local storage, so they remain after reloading the page in the same browser.
+To use a different port in PowerShell:
 
-Use **Export tasks** to download all tasks as a JSON file. Use **Restore tasks** to select a FocusBoard export. The app validates the complete file and asks for confirmation before replacing the current task list.
+```powershell
+npm.cmd run serve -- --port 4174
+```
+
+## Why HTTP instead of `file://`
+
+FocusBoard loads JavaScript ES modules. Browsers restrict module loading from a `file://` URL, so opening `index.html` directly may prevent the application scripts from loading. Use the local HTTP server above for reliable browser behavior.
+
+## Install test tooling
+
+Install the exact development dependencies recorded in `package-lock.json`:
+
+```sh
+npm ci
+```
+
+In Windows PowerShell, use `npm.cmd ci` if required by the local execution policy.
+
+## Install Chromium
+
+Install the Chromium build that matches the installed Playwright version:
+
+```sh
+npx playwright install chromium
+```
+
+In Windows PowerShell, use `npx.cmd playwright install chromium` if required by the local execution policy. The test configuration uses Chromium only.
+
+## Run automated tests
+
+Run the complete suite from the project root:
+
+```sh
+npm test
+```
+
+To run one test file, pass its path after `--`:
+
+```sh
+npm test -- tests/tasks.spec.js
+```
+
+In Windows PowerShell, the equivalent commands are `npm.cmd test` and `npm.cmd test -- tests/tasks.spec.js`. Playwright starts the local HTTP server automatically for browser tests. Tests use `http://127.0.0.1:4173`; they do not load the app through `file://`.
+
+## Test coverage
+
+The automated suite checks:
+
+- Task creation, editing, deletion, status, priority, due dates, filtering, sorting, ordering, and mutation safety
+- Local storage missing, valid, invalid, corrupt, and unavailable states, plus persistence across reload
+- JSON export format and canonical task fields
+- Restore validation, duplicate IDs, extra fields, cancellation, failed persistence, and reload behavior
+- Browser CRUD, combined filters and sorting, confirmation flows, keyboard focus, export, restore, and storage persistence
+- HTTP module and stylesheet loading, server 404 handling, and path traversal rejection
+- Responsive overflow, control and card bounds, message bounds, and board columns at the viewports listed below
+
+## Responsive verification
+
+Run the viewport checks with:
+
+```sh
+npm test -- tests/responsive.spec.js
+```
+
+The Chromium tests check these viewport sizes:
+
+- Desktop: 1440 × 900, with three task columns
+- Tablet: 768 × 1024, with three task columns
+- Mobile: 375 × 812, with stacked task columns
+
+At each size, the suite checks for horizontal overflow, verifies that forms, controls, task cards, and status messages stay within the viewport, and checks that card text stays within its task column. It also checks that the primary task and portability controls remain visible and usable.
+
+## Quick manual smoke test
+
+1. Start the app and add a task with a description, status, priority, and due date. Reload and confirm it remains.
+2. Use the keyboard to reach a task's Edit button and activate it. Confirm focus moves to the Title field. Cancel and confirm focus returns to the same Edit button.
+3. Edit a task, change its status, and save. Confirm the task moves to the correct column and focus remains in the form.
+4. Use the keyboard to delete a task and confirm the dialog. Confirm focus moves to the next task, the previous task, or the column heading when the column becomes empty. Repeat and cancel the dialog.
+5. Apply Search, Status, Priority, Due Date, and Sort controls, then activate Clear filters. Confirm focus remains on Clear filters and the task list is unchanged.
+6. Export tasks and confirm a JSON file downloads. Restore that file, confirm replacement, and reload to verify persistence. Also try cancelling a restore and selecting an invalid JSON file.
+
+## Troubleshooting
+
+- **The app does not load when opening `index.html` directly:** start the HTTP server and use `http://127.0.0.1:4173` instead of `file://`.
+- **The default port is already in use:** start the app with `npm run serve -- --port 4174` and open `http://127.0.0.1:4174`. Browser tests use port 4173; stop another server using that port before running them.
+- **Playwright reports that Chromium is missing:** run `npx playwright install chromium` after installing dependencies.
+- **PowerShell blocks `npm` or `npx`:** use `npm.cmd` or `npx.cmd` as shown in the setup instructions.
+- **A browser test fails:** run the failing test file by itself with `npm test -- tests/<file>.spec.js` and read the failure output before changing code.
 
 ## Current Status
 
-FocusBoard is an ongoing beginner-level project at the MVP stage. The core task management features, due-date labels and filters, simple sorting, active-filter feedback, informative empty states, responsive layout, and local JSON export/restore are implemented. Progress percentage and undo delete are not currently available.
+FocusBoard is an ongoing portfolio project at the MVP stage. Its core task management, filtering, sorting, local JSON export and restore, keyboard focus recovery, reproducible automated tests, and responsive verification are implemented. Undo delete and progress percentage are not currently available.
