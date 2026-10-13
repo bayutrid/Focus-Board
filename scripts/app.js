@@ -377,9 +377,12 @@ undoDeleteButton.addEventListener("click", () => {
     return;
   }
 
-  saveCurrentTasks();
+  const wasSaved = saveCurrentTasks();
   renderDashboard(getTasks());
-  showUndoDeleteMessage("Task restored.");
+  const message = wasSaved
+    ? "Task restored."
+    : `Task "${restoredTask.title}" restored for this session, but could not be saved and may not remain after reload.`;
+  showUndoDeleteMessage(message);
 });
 
 restoreFileInput.addEventListener("change", async () => {
@@ -579,8 +582,9 @@ tasksPanel.addEventListener("click", (event) => {
 
     if (window.confirm(`Delete "${task.title}"? You can undo this action.`)) {
       const wasDeleted = deleteTask(taskId);
+      let wasSaved = false;
       if (wasDeleted) {
-        saveCurrentTasks();
+        wasSaved = saveCurrentTasks();
       }
       if (editingTaskId === taskId) {
         resetTaskForm();
@@ -589,7 +593,10 @@ tasksPanel.addEventListener("click", (event) => {
 
       const pendingUndo = wasDeleted ? getPendingDeleteUndo() : null;
       if (pendingUndo) {
-        showUndoDeleteMessage(`Deleted "${pendingUndo.task.title}". Undo is available.`, pendingUndo.task);
+        const message = wasSaved
+          ? `Deleted "${pendingUndo.task.title}". Undo is available.`
+          : `Deleted "${pendingUndo.task.title}" for this session. The change was not saved; Undo is available.`;
+        showUndoDeleteMessage(message, pendingUndo.task);
       }
 
       if (shouldRestoreKeyboardFocus) {

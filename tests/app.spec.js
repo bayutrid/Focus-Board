@@ -169,6 +169,50 @@ test('undoButtonHasTaskSpecificAccessibleNameAndLiveMessage', async ({ page }) =
   await expect(message).toHaveAttribute('aria-live', 'polite');
 });
 
+test('deleteSaveFailureKeepsUndoAvailableAndReportsNotSaved', async ({ page }) => {
+  const task = makeTask({ id: 'delete-save-failure', title: 'Delete without storage' });
+  await openBoard(page, [task]);
+  const originalStorage = await page.evaluate(key => localStorage.getItem(key), STORAGE_KEY);
+  await page.evaluate(key => {
+    const originalSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (storageKey, value) {
+      if (storageKey === key) throw new Error('simulated quota failure');
+      return originalSetItem.call(this, storageKey, value);
+    };
+  }, STORAGE_KEY);
+
+  page.once('dialog', dialog => dialog.accept());
+  await taskCard(page, task.title).getByRole('button', { name: `Delete ${task.title}` }).click();
+
+  await expect(taskCard(page, task.title)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: `Undo delete of ${task.title}` })).toBeVisible();
+  await expect(page.locator('#undo-delete-message')).toContainText(/not saved/i);
+  expect(await page.evaluate(key => localStorage.getItem(key), STORAGE_KEY)).toBe(originalStorage);
+});
+
+test('undoSaveFailureRestoresInMemoryAndReportsNotSaved', async ({ page }) => {
+  const task = makeTask({ id: 'undo-save-failure', title: 'Restore without storage' });
+  await openBoard(page, [task]);
+  page.once('dialog', dialog => dialog.accept());
+  await taskCard(page, task.title).getByRole('button', { name: `Delete ${task.title}` }).click();
+  const deletedStorage = await page.evaluate(key => localStorage.getItem(key), STORAGE_KEY);
+  await page.evaluate(key => {
+    const originalSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (storageKey, value) {
+      if (storageKey === key) throw new Error('simulated quota failure');
+      return originalSetItem.call(this, storageKey, value);
+    };
+  }, STORAGE_KEY);
+
+  await page.getByRole('button', { name: `Undo delete of ${task.title}` }).click();
+
+  await expect(taskCard(page, task.title)).toHaveCount(1);
+  await expect(page.locator('#undo-delete-message')).toContainText(/could not be saved/i);
+  await expect(page.locator('#undo-delete-message')).toContainText(/reload/i);
+  await expect(page.getByRole('button', { name: `Undo delete of ${task.title}` })).toBeHidden();
+  expect(await page.evaluate(key => localStorage.getItem(key), STORAGE_KEY)).toBe(deletedStorage);
+});
+
 test('filtersAndSortComposeWithoutChangingStoredTaskOrder', async ({ page }) => {
   const dates = await page.evaluate(() => {
     const futureDate = days => {
