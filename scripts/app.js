@@ -4,11 +4,13 @@ import {
   getDueDateStatus,
   getTasks,
   getProgressSummary,
+  getPendingDeleteUndo,
   getTaskById,
   getTasksByStatus,
   getVisibleTasks,
   sortTasks,
   setTasks,
+  undoLastDelete,
   updateTask,
 } from "./tasks.js";
 import {
@@ -50,6 +52,9 @@ const storageMessage = document.querySelector("#storage-message");
 const exportTasksButton = document.querySelector("#export-tasks");
 const restoreFileInput = document.querySelector("#restore-file");
 const portabilityMessage = document.querySelector("#portability-message");
+const undoDeleteNotice = document.querySelector("#undo-delete-notice");
+const undoDeleteMessage = document.querySelector("#undo-delete-message");
+const undoDeleteButton = document.querySelector("#undo-delete-button");
 let editingTaskId = null;
 let isSubmitting = false;
 
@@ -320,6 +325,18 @@ function showPortabilityMessage(message) {
   portabilityMessage.hidden = !message;
 }
 
+function showUndoDeleteMessage(message, task = null) {
+  undoDeleteNotice.hidden = false;
+  undoDeleteMessage.textContent = message;
+  undoDeleteButton.hidden = !task;
+
+  if (task) {
+    undoDeleteButton.setAttribute("aria-label", `Undo delete of ${task.title}`);
+  } else {
+    undoDeleteButton.removeAttribute("aria-label");
+  }
+}
+
 function getLocalDateString(date = new Date()) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -351,6 +368,18 @@ exportTasksButton.addEventListener("click", () => {
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
     }
   }
+});
+
+undoDeleteButton.addEventListener("click", () => {
+  const restoredTask = undoLastDelete();
+  if (!restoredTask) {
+    showUndoDeleteMessage("Undo is no longer available.");
+    return;
+  }
+
+  saveCurrentTasks();
+  renderDashboard(getTasks());
+  showUndoDeleteMessage("Task restored.");
 });
 
 restoreFileInput.addEventListener("change", async () => {
@@ -548,7 +577,7 @@ tasksPanel.addEventListener("click", (event) => {
       : [];
     const deletedTaskIndex = visibleTaskIds.indexOf(taskId);
 
-    if (window.confirm(`Delete "${task.title}"? This cannot be undone.`)) {
+    if (window.confirm(`Delete "${task.title}"? You can undo this action.`)) {
       const wasDeleted = deleteTask(taskId);
       if (wasDeleted) {
         saveCurrentTasks();
@@ -557,6 +586,11 @@ tasksPanel.addEventListener("click", (event) => {
         resetTaskForm();
       }
       renderDashboard(getTasks());
+
+      const pendingUndo = wasDeleted ? getPendingDeleteUndo() : null;
+      if (pendingUndo) {
+        showUndoDeleteMessage(`Deleted "${pendingUndo.task.title}". Undo is available.`, pendingUndo.task);
+      }
 
       if (shouldRestoreKeyboardFocus) {
         const nextTaskId = visibleTaskIds[deletedTaskIndex + 1]
