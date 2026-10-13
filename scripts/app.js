@@ -370,10 +370,15 @@ exportTasksButton.addEventListener("click", () => {
   }
 });
 
-undoDeleteButton.addEventListener("click", () => {
+undoDeleteButton.addEventListener("click", (event) => {
+  const shouldRestoreKeyboardFocus = event.detail === 0
+    && undoDeleteButton.matches(":focus-visible");
   const restoredTask = undoLastDelete();
   if (!restoredTask) {
     showUndoDeleteMessage("Undo is no longer available.");
+    if (shouldRestoreKeyboardFocus) {
+      undoDeleteMessage.focus();
+    }
     return;
   }
 
@@ -383,6 +388,11 @@ undoDeleteButton.addEventListener("click", () => {
     ? "Task restored."
     : `Task "${restoredTask.title}" restored for this session, but could not be saved and may not remain after reload.`;
   showUndoDeleteMessage(message);
+
+  if (shouldRestoreKeyboardFocus) {
+    const editButton = getTaskActionButton(restoredTask.id, "edit");
+    (editButton || undoDeleteMessage).focus();
+  }
 });
 
 restoreFileInput.addEventListener("change", async () => {

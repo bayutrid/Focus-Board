@@ -170,3 +170,41 @@ test('mouseEditDoesNotForceFocusIntoTitle', async ({ page }) => {
   await edit.click();
   await expect(page.locator('#task-title')).not.toBeFocused();
 });
+
+test('keyboardUndoFocusesRestoredTaskEditButton', async ({ page }) => {
+  const task = makeTask({ id: 'keyboard-undo', title: 'Keyboard undo target' });
+  await openBoard(page, [task]);
+  page.once('dialog', dialog => dialog.accept());
+  await activateByKeyboard(card(page, task.title).getByRole('button', { name: `Delete ${task.title}` }));
+
+  await activateByKeyboard(page.getByRole('button', { name: `Undo delete of ${task.title}` }));
+
+  await expect(card(page, task.title).getByRole('button', { name: `Edit ${task.title}` })).toBeFocused();
+});
+
+test('keyboardUndoUsesStatusFallbackWhenRestoredTaskIsFilteredOut', async ({ page }) => {
+  const task = makeTask({ id: 'filtered-undo', title: 'Filtered undo target', status: 'todo' });
+  await openBoard(page, [task]);
+  page.once('dialog', dialog => dialog.accept());
+  await activateByKeyboard(card(page, task.title).getByRole('button', { name: `Delete ${task.title}` }));
+  await page.locator('#status-filter').selectOption('doing');
+
+  await activateByKeyboard(page.getByRole('button', { name: `Undo delete of ${task.title}` }));
+
+  await expect(page.locator('#status-filter')).toHaveValue('doing');
+  await expect(card(page, task.title)).toHaveCount(0);
+  await expect(page.locator('#undo-delete-message')).toBeFocused();
+});
+
+test('mouseUndoDoesNotForceFocus', async ({ page }) => {
+  const task = makeTask({ id: 'mouse-undo', title: 'Mouse undo target' });
+  await openBoard(page, [task]);
+  page.once('dialog', dialog => dialog.accept());
+  await card(page, task.title).getByRole('button', { name: `Delete ${task.title}` }).click();
+
+  await page.getByRole('button', { name: `Undo delete of ${task.title}` }).click();
+
+  await expect(card(page, task.title)).toHaveCount(1);
+  expect(await card(page, task.title).getByRole('button', { name: `Edit ${task.title}` }).evaluate(element => element === document.activeElement)).toBe(false);
+  expect(await page.locator('#undo-delete-message').evaluate(element => element === document.activeElement)).toBe(false);
+});
