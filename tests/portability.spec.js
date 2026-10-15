@@ -172,3 +172,73 @@ test('restoreWhileFilteredResetsViewOnlyAfterSuccessfulReplacement', async ({ pa
   await expect(page.locator('#task-sort')).toHaveValue('default');
   await expect(page.locator('.task-card h4')).toHaveText(['New restored task']);
 });
+
+test('successfulRestoreInvalidatesPendingDeleteUndo', async ({ page }) => {
+  const deleted = makeTask({ id: 'restore-invalidates', title: 'Deleted before restore' });
+  const incoming = makeTask({ id: 'restore-new', title: 'Incoming replacement' });
+  await openBoard(page, [deleted]);
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: `Delete ${deleted.title}` }).click();
+  await expect(page.getByRole('button', { name: `Undo delete of ${deleted.title}` })).toBeVisible();
+
+  page.once('dialog', dialog => dialog.accept());
+  await uploadJson(page, envelope([incoming]));
+
+  await expect(page.locator('#portability-message')).toHaveText('Tasks restored successfully.');
+  await expect(page.getByRole('button', { name: /Undo delete/ })).toHaveCount(0);
+  await expect(page.locator('#undo-delete-notice')).toBeHidden();
+  await expect(page.locator('.task-card h4')).toHaveText([incoming.title]);
+});
+
+test('failedOrCancelledRestorePreservesPendingDeleteUndo', async ({ page }) => {
+  const deleted = makeTask({ id: 'restore-preserves', title: 'Still undoable after failed restore' });
+  const retained = makeTask({ id: 'restore-retained', title: 'Retained task' });
+  const incoming = makeTask({ id: 'restore-not-saved', title: 'Unpersisted import' });
+  await openBoard(page, [deleted, retained]);
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: `Delete ${deleted.title}` }).click();
+  const undoButton = page.getByRole('button', { name: `Undo delete of ${deleted.title}` });
+
+  page.once('dialog', dialog => dialog.dismiss());
+  await uploadJson(page, envelope([incoming]));
+  await expect(undoButton).toBeVisible();
+  await uploadJson(page, '{invalid json');
+  await expect(page.locator('#portability-message')).toContainText('not valid JSON');
+  await expect(undoButton).toBeVisible();
+  const storageAfterDelete = await savedTasks(page);
+
+  await page.evaluate(key => {
+    const originalSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (storageKey, value) {
+      if (storageKey === key) throw new Error('simulated quota failure');
+      return originalSetItem.call(this, storageKey, value);
+    };
+  }, STORAGE_KEY);
+  page.once('dialog', dialog => dialog.accept());
+  await uploadJson(page, envelope([incoming]));
+  await expect(page.locator('#portability-message')).toContainText('Restore could not be saved');
+  await expect(undoButton).toBeVisible();
+
+  await undoButton.click();
+
+  await expect(page.getByRole('heading', { name: deleted.title, exact: true })).toBeVisible();
+  await expect(page.locator('#undo-delete-message')).toContainText('could not be saved');
+  expect(await savedTasks(page)).toBe(storageAfterDelete);
+});
+
+test('exportDoesNotInvalidatePendingDeleteUndo', async ({ page }) => {
+  const deleted = makeTask({ id: 'export-keeps-undo', title: 'Undo after export' });
+  await openBoard(page, [deleted]);
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: `Delete ${deleted.title}` }).click();
+  const undoButton = page.getByRole('button', { name: `Undo delete of ${deleted.title}` });
+  await expect(undoButton).toBeVisible();
+
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export tasks' }).click();
+  await download;
+  await expect(undoButton).toBeVisible();
+  await undoButton.click();
+
+  await expect(page.getByRole('heading', { name: deleted.title, exact: true })).toBeVisible();
+});

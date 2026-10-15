@@ -213,6 +213,84 @@ test('undoSaveFailureRestoresInMemoryAndReportsNotSaved', async ({ page }) => {
   expect(await page.evaluate(key => localStorage.getItem(key), STORAGE_KEY)).toBe(deletedStorage);
 });
 
+test('undoPreservesActiveFilterAndSort', async ({ page }) => {
+  const first = makeTask({ id: 'view-first', title: 'Sort test later', status: 'todo', priority: 'low', dueDate: '2026-11-20' });
+  const target = makeTask({ id: 'view-target', title: 'Sort test target', status: 'todo', priority: 'high', dueDate: '2026-11-11' });
+  const last = makeTask({ id: 'view-last', title: 'Sort test middle', status: 'todo', priority: 'medium', dueDate: '2026-11-15' });
+  await openBoard(page, [first, target, last]);
+  await page.locator('#task-search').fill('Sort test');
+  await page.locator('#status-filter').selectOption('todo');
+  await page.locator('#task-sort').selectOption('due-date');
+
+  page.once('dialog', dialog => dialog.accept());
+  await taskCard(page, target.title).getByRole('button', { name: `Delete ${target.title}` }).click();
+  await page.getByRole('button', { name: `Undo delete of ${target.title}` }).click();
+
+  await expect(page.locator('#task-search')).toHaveValue('Sort test');
+  await expect(page.locator('#status-filter')).toHaveValue('todo');
+  await expect(page.locator('#task-sort')).toHaveValue('due-date');
+  expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)), STORAGE_KEY)).toEqual([first, target, last]);
+  await expect(page.locator('.task-card h4')).toHaveText([target.title, last.title, first.title]);
+});
+
+test('undoKeepsRestoredTaskHiddenWhenItDoesNotMatchFilter', async ({ page }) => {
+  const task = makeTask({ id: 'hidden-after-undo', title: 'Hidden until filters clear', status: 'todo' });
+  await openBoard(page, [task]);
+
+  page.once('dialog', dialog => dialog.accept());
+  await taskCard(page, task.title).getByRole('button', { name: `Delete ${task.title}` }).click();
+  await page.locator('#status-filter').selectOption('doing');
+  await page.getByRole('button', { name: `Undo delete of ${task.title}` }).click();
+
+  await expect(page.locator('#status-filter')).toHaveValue('doing');
+  await expect(taskCard(page, task.title)).toHaveCount(0);
+  expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)), STORAGE_KEY)).toEqual([task]);
+  await page.locator('#clear-task-filters').click();
+  await expect(taskCard(page, task.title)).toHaveCount(1);
+});
+
+test('deleteThenReloadDoesNotRetainUndoSnapshot', async ({ page }) => {
+  const task = makeTask({ id: 'delete-reload', title: 'Deleted before reload' });
+  await openBoard(page, [task]);
+  page.once('dialog', dialog => dialog.accept());
+  await taskCard(page, task.title).getByRole('button', { name: `Delete ${task.title}` }).click();
+  await expect(page.getByRole('button', { name: `Undo delete of ${task.title}` })).toBeVisible();
+
+  await page.reload();
+
+  await expect(page.getByRole('button', { name: /Undo delete/ })).toHaveCount(0);
+  await expect(taskCard(page, task.title)).toHaveCount(0);
+});
+
+test('undoThenReloadRetainsRestoredTask', async ({ page }) => {
+  const task = makeTask({ id: 'undo-reload', title: 'Restored before reload' });
+  await openBoard(page, [task]);
+  page.once('dialog', dialog => dialog.accept());
+  await taskCard(page, task.title).getByRole('button', { name: `Delete ${task.title}` }).click();
+  await page.getByRole('button', { name: `Undo delete of ${task.title}` }).click();
+
+  await page.reload();
+
+  await expect(taskCard(page, task.title)).toHaveCount(1);
+  await expect(page.getByRole('button', { name: /Undo delete/ })).toHaveCount(0);
+});
+
+test('doubleUndoActivationDoesNotDuplicateTask', async ({ page }) => {
+  const task = makeTask({ id: 'double-undo', title: 'Undo only once' });
+  await openBoard(page, [task]);
+  page.once('dialog', dialog => dialog.accept());
+  await taskCard(page, task.title).getByRole('button', { name: `Delete ${task.title}` }).click();
+  const undoButton = page.getByRole('button', { name: `Undo delete of ${task.title}` });
+  await undoButton.click();
+  await page.locator('#undo-delete-button').dispatchEvent('click');
+
+  await expect(taskCard(page, task.title)).toHaveCount(1);
+  await expect(page.locator('#undo-delete-message')).toHaveText('Undo is no longer available.');
+  const storedTasks = await page.evaluate(key => JSON.parse(localStorage.getItem(key)), STORAGE_KEY);
+  expect(storedTasks).toEqual([task]);
+  expect(new Set(storedTasks.map(savedTask => savedTask.id)).size).toBe(1);
+});
+
 test('filtersAndSortComposeWithoutChangingStoredTaskOrder', async ({ page }) => {
   const dates = await page.evaluate(() => {
     const futureDate = days => {

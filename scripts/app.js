@@ -337,6 +337,13 @@ function showUndoDeleteMessage(message, task = null) {
   }
 }
 
+function clearUndoDeleteNotice() {
+  undoDeleteNotice.hidden = true;
+  undoDeleteMessage.textContent = "";
+  undoDeleteButton.hidden = true;
+  undoDeleteButton.removeAttribute("aria-label");
+}
+
 function getLocalDateString(date = new Date()) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -430,6 +437,7 @@ restoreFileInput.addEventListener("change", async () => {
     }
 
     setTasks(result.tasks);
+    clearUndoDeleteNotice();
     storageWritesAllowed = true;
     storageWriteFailed = false;
     showStorageMessage("");
