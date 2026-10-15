@@ -7,6 +7,7 @@ FocusBoard is a beginner-friendly personal productivity dashboard for creating a
 ## Features
 
 - Create, edit, and delete tasks
+- Undo the most recently deleted task during the current page session; Undo does not persist across reloads
 - Set a task status, priority, and optional due date
 - See overdue, due today, and upcoming labels for open tasks due within seven days
 - Scan status and priority badges on task cards
@@ -172,8 +173,9 @@ At each size, the suite checks for horizontal overflow, verifies that forms, con
 2. Use the keyboard to reach a task's Edit button and activate it. Confirm focus moves to the Title field. Cancel and confirm focus returns to the same Edit button.
 3. Edit a task, change its status, and save. Confirm the task moves to the correct column and focus remains in the form.
 4. Use the keyboard to delete a task and confirm the dialog. Confirm focus moves to the next task, the previous task, or the column heading when the column becomes empty. Repeat and cancel the dialog.
-5. Apply Search, Status, Priority, Due Date, and Sort controls, then activate Clear filters. Confirm focus remains on Clear filters and the task list is unchanged.
-6. Export tasks and confirm a JSON file downloads. Restore that file, confirm replacement, and reload to verify persistence. Also try cancelling a restore and selecting an invalid JSON file.
+5. Create two tasks with different status, priority, due-date, and description values. Delete one and confirm, then choose Undo. With Default sort selected, verify its fields and order return. Reload and confirm the task remains but the Undo action is no longer available.
+6. Apply Search, Status, Priority, Due Date, and Sort controls, then activate Clear filters. Confirm focus remains on Clear filters and the task list is unchanged.
+7. Export tasks and confirm a JSON file downloads. Restore that file, confirm replacement, and reload to verify persistence. Also try cancelling a restore and selecting an invalid JSON file.
 
 ## Troubleshooting
 
