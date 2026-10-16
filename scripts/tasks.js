@@ -1,7 +1,9 @@
 // This module owns the in-memory task list. Dates use YYYY-MM-DD calendar dates.
 let tasks = [];
+let pendingDeleteUndo = null;
 
 export function setTasks(taskList) {
+  pendingDeleteUndo = null;
   tasks = taskList.map((task) => ({ ...task }));
 }
 
@@ -62,8 +64,47 @@ export function deleteTask(taskId) {
     return false;
   }
 
-  tasks.splice(taskIndex, 1);
+  const [deletedTask] = tasks.splice(taskIndex, 1);
+  pendingDeleteUndo = {
+    task: { ...deletedTask },
+    index: taskIndex,
+  };
   return true;
+}
+
+export function getPendingDeleteUndo() {
+  if (!pendingDeleteUndo) {
+    return null;
+  }
+
+  return {
+    task: { ...pendingDeleteUndo.task },
+    index: pendingDeleteUndo.index,
+  };
+}
+
+export function undoLastDelete() {
+  if (!pendingDeleteUndo) {
+    return null;
+  }
+
+  const { task, index } = pendingDeleteUndo;
+  const isValidSnapshot = task
+    && typeof task.id === "string"
+    && Number.isInteger(index)
+    && index >= 0;
+  const hasTaskIdConflict = isValidSnapshot
+    && tasks.some((currentTask) => currentTask.id === task.id);
+
+  if (!isValidSnapshot || hasTaskIdConflict) {
+    pendingDeleteUndo = null;
+    return null;
+  }
+
+  const restoredTask = { ...task };
+  tasks.splice(Math.min(index, tasks.length), 0, restoredTask);
+  pendingDeleteUndo = null;
+  return { ...restoredTask };
 }
 
 export function getTasksByStatus(taskList, status) {

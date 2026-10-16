@@ -80,6 +80,217 @@ test('deleteConfirmationDismissLeavesTaskAndStorageUnchanged', async ({ page }) 
   expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)), STORAGE_KEY)).toEqual([task]);
 });
 
+test('confirmedDeleteShowsUndoAndKeepsDeleteConfirmation', async ({ page }) => {
+  const task = makeTask({ id: 'delete-undo', title: 'Delete with Undo' });
+  await openBoard(page, [task]);
+
+  let confirmationMessage = '';
+  page.once('dialog', async dialog => {
+    confirmationMessage = dialog.message();
+    await dialog.accept();
+  });
+  await taskCard(page, task.title).getByRole('button', { name: `Delete ${task.title}` }).click();
+  expect(confirmationMessage).toContain(task.title);
+  expect(confirmationMessage.toLowerCase()).toContain('undo');
+
+  await expect(taskCard(page, task.title)).toHaveCount(0);
+  await expect(page.locator('#undo-delete-notice')).toBeVisible();
+  await expect(page.getByRole('button', { name: `Undo delete of ${task.title}` })).toBeVisible();
+  await expect(page.locator('#undo-delete-message')).toContainText(task.title);
+  expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)), STORAGE_KEY)).toEqual([]);
+});
+
+test('cancelledDeletePreservesTaskAndPreviousUndoSnapshot', async ({ page }) => {
+  const first = makeTask({ id: 'first-undo', title: 'First deleted task' });
+  const second = makeTask({ id: 'second-cancel', title: 'Delete then cancel' });
+  await openBoard(page, [first, second]);
+
+  page.once('dialog', dialog => dialog.accept());
+  await taskCard(page, first.title).getByRole('button', { name: `Delete ${first.title}` }).click();
+  page.once('dialog', dialog => dialog.dismiss());
+  await taskCard(page, second.title).getByRole('button', { name: `Delete ${second.title}` }).click();
+
+  await expect(taskCard(page, second.title)).toHaveCount(1);
+  await expect(page.getByRole('button', { name: `Undo delete of ${first.title}` })).toBeVisible();
+  await page.getByRole('button', { name: `Undo delete of ${first.title}` }).click();
+
+  await expect(taskCard(page, first.title)).toHaveCount(1);
+  await expect(taskCard(page, second.title)).toHaveCount(1);
+  await expect(page.locator('#undo-delete-notice')).toBeVisible();
+  await expect(page.getByRole('button', { name: `Undo delete of ${first.title}` })).toBeHidden();
+  await expect(page.locator('#undo-delete-message')).toHaveText('Task restored.');
+});
+
+test('undoRestoresExactTaskFieldsAndUnderlyingOrder', async ({ page }) => {
+  const first = makeTask({ id: 'ordered-first', title: 'First ordered', priority: 'low' });
+  const middle = makeTask({ id: 'ordered-middle', title: 'Middle ordered', description: 'Restore every field', status: 'doing', priority: 'high', dueDate: '2026-11-12', createdAt: '2026-02-03T04:05:06.000Z', updatedAt: '2026-03-04T05:06:07.000Z' });
+  const last = makeTask({ id: 'ordered-last', title: 'Last ordered', status: 'done' });
+  await openBoard(page, [first, middle, last]);
+
+  page.once('dialog', dialog => dialog.accept());
+  await taskCard(page, middle.title).getByRole('button', { name: `Delete ${middle.title}` }).click();
+  await page.getByRole('button', { name: `Undo delete of ${middle.title}` }).click();
+
+  expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)), STORAGE_KEY)).toEqual([first, middle, last]);
+  await expect(taskCard(page, middle.title)).toContainText('Restore every field');
+  await expect(taskCard(page, middle.title)).toContainText('Doing');
+  await expect(taskCard(page, middle.title)).toContainText('Priority: High');
+  await expect(taskCard(page, middle.title)).toContainText('Nov 12, 2026');
+  await expect(page.locator('#total-task-count')).toHaveText('3');
+});
+
+test('secondConfirmedDeleteReplacesVisibleUndoTarget', async ({ page }) => {
+  const first = makeTask({ id: 'replace-first', title: 'First removed' });
+  const second = makeTask({ id: 'replace-second', title: 'Second removed' });
+  await openBoard(page, [first, second]);
+
+  page.once('dialog', dialog => dialog.accept());
+  await taskCard(page, first.title).getByRole('button', { name: `Delete ${first.title}` }).click();
+  page.once('dialog', dialog => dialog.accept());
+  await taskCard(page, second.title).getByRole('button', { name: `Delete ${second.title}` }).click();
+
+  await expect(page.getByRole('button', { name: `Undo delete of ${second.title}` })).toBeVisible();
+  await page.getByRole('button', { name: `Undo delete of ${second.title}` }).click();
+
+  await expect(taskCard(page, first.title)).toHaveCount(0);
+  await expect(taskCard(page, second.title)).toHaveCount(1);
+  expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)), STORAGE_KEY)).toEqual([second]);
+});
+
+test('undoButtonHasTaskSpecificAccessibleNameAndLiveMessage', async ({ page }) => {
+  const task = makeTask({ id: 'accessible-undo', title: 'Accessible Undo target' });
+  await openBoard(page, [task]);
+  page.once('dialog', dialog => dialog.accept());
+  await taskCard(page, task.title).getByRole('button', { name: `Delete ${task.title}` }).click();
+
+  const message = page.locator('#undo-delete-message');
+  await expect(page.getByRole('button', { name: `Undo delete of ${task.title}` })).toBeVisible();
+  await expect(message).toHaveAttribute('role', 'status');
+  await expect(message).toHaveAttribute('aria-live', 'polite');
+});
+
+test('deleteSaveFailureKeepsUndoAvailableAndReportsNotSaved', async ({ page }) => {
+  const task = makeTask({ id: 'delete-save-failure', title: 'Delete without storage' });
+  await openBoard(page, [task]);
+  const originalStorage = await page.evaluate(key => localStorage.getItem(key), STORAGE_KEY);
+  await page.evaluate(key => {
+    const originalSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (storageKey, value) {
+      if (storageKey === key) throw new Error('simulated quota failure');
+      return originalSetItem.call(this, storageKey, value);
+    };
+  }, STORAGE_KEY);
+
+  page.once('dialog', dialog => dialog.accept());
+  await taskCard(page, task.title).getByRole('button', { name: `Delete ${task.title}` }).click();
+
+  await expect(taskCard(page, task.title)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: `Undo delete of ${task.title}` })).toBeVisible();
+  await expect(page.locator('#undo-delete-message')).toContainText(/not saved/i);
+  expect(await page.evaluate(key => localStorage.getItem(key), STORAGE_KEY)).toBe(originalStorage);
+});
+
+test('undoSaveFailureRestoresInMemoryAndReportsNotSaved', async ({ page }) => {
+  const task = makeTask({ id: 'undo-save-failure', title: 'Restore without storage' });
+  await openBoard(page, [task]);
+  page.once('dialog', dialog => dialog.accept());
+  await taskCard(page, task.title).getByRole('button', { name: `Delete ${task.title}` }).click();
+  const deletedStorage = await page.evaluate(key => localStorage.getItem(key), STORAGE_KEY);
+  await page.evaluate(key => {
+    const originalSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (storageKey, value) {
+      if (storageKey === key) throw new Error('simulated quota failure');
+      return originalSetItem.call(this, storageKey, value);
+    };
+  }, STORAGE_KEY);
+
+  await page.getByRole('button', { name: `Undo delete of ${task.title}` }).click();
+
+  await expect(taskCard(page, task.title)).toHaveCount(1);
+  await expect(page.locator('#undo-delete-message')).toContainText(/could not be saved/i);
+  await expect(page.locator('#undo-delete-message')).toContainText(/reload/i);
+  await expect(page.getByRole('button', { name: `Undo delete of ${task.title}` })).toBeHidden();
+  expect(await page.evaluate(key => localStorage.getItem(key), STORAGE_KEY)).toBe(deletedStorage);
+});
+
+test('undoPreservesActiveFilterAndSort', async ({ page }) => {
+  const first = makeTask({ id: 'view-first', title: 'Sort test later', status: 'todo', priority: 'low', dueDate: '2026-11-20' });
+  const target = makeTask({ id: 'view-target', title: 'Sort test target', status: 'todo', priority: 'high', dueDate: '2026-11-11' });
+  const last = makeTask({ id: 'view-last', title: 'Sort test middle', status: 'todo', priority: 'medium', dueDate: '2026-11-15' });
+  await openBoard(page, [first, target, last]);
+  await page.locator('#task-search').fill('Sort test');
+  await page.locator('#status-filter').selectOption('todo');
+  await page.locator('#task-sort').selectOption('due-date');
+
+  page.once('dialog', dialog => dialog.accept());
+  await taskCard(page, target.title).getByRole('button', { name: `Delete ${target.title}` }).click();
+  await page.getByRole('button', { name: `Undo delete of ${target.title}` }).click();
+
+  await expect(page.locator('#task-search')).toHaveValue('Sort test');
+  await expect(page.locator('#status-filter')).toHaveValue('todo');
+  await expect(page.locator('#task-sort')).toHaveValue('due-date');
+  expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)), STORAGE_KEY)).toEqual([first, target, last]);
+  await expect(page.locator('.task-card h4')).toHaveText([target.title, last.title, first.title]);
+});
+
+test('undoKeepsRestoredTaskHiddenWhenItDoesNotMatchFilter', async ({ page }) => {
+  const task = makeTask({ id: 'hidden-after-undo', title: 'Hidden until filters clear', status: 'todo' });
+  await openBoard(page, [task]);
+
+  page.once('dialog', dialog => dialog.accept());
+  await taskCard(page, task.title).getByRole('button', { name: `Delete ${task.title}` }).click();
+  await page.locator('#status-filter').selectOption('doing');
+  await page.getByRole('button', { name: `Undo delete of ${task.title}` }).click();
+
+  await expect(page.locator('#status-filter')).toHaveValue('doing');
+  await expect(taskCard(page, task.title)).toHaveCount(0);
+  expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)), STORAGE_KEY)).toEqual([task]);
+  await page.locator('#clear-task-filters').click();
+  await expect(taskCard(page, task.title)).toHaveCount(1);
+});
+
+test('deleteThenReloadDoesNotRetainUndoSnapshot', async ({ page }) => {
+  const task = makeTask({ id: 'delete-reload', title: 'Deleted before reload' });
+  await openBoard(page, [task]);
+  page.once('dialog', dialog => dialog.accept());
+  await taskCard(page, task.title).getByRole('button', { name: `Delete ${task.title}` }).click();
+  await expect(page.getByRole('button', { name: `Undo delete of ${task.title}` })).toBeVisible();
+
+  await page.reload();
+
+  await expect(page.getByRole('button', { name: /Undo delete/ })).toHaveCount(0);
+  await expect(taskCard(page, task.title)).toHaveCount(0);
+});
+
+test('undoThenReloadRetainsRestoredTask', async ({ page }) => {
+  const task = makeTask({ id: 'undo-reload', title: 'Restored before reload' });
+  await openBoard(page, [task]);
+  page.once('dialog', dialog => dialog.accept());
+  await taskCard(page, task.title).getByRole('button', { name: `Delete ${task.title}` }).click();
+  await page.getByRole('button', { name: `Undo delete of ${task.title}` }).click();
+
+  await page.reload();
+
+  await expect(taskCard(page, task.title)).toHaveCount(1);
+  await expect(page.getByRole('button', { name: /Undo delete/ })).toHaveCount(0);
+});
+
+test('doubleUndoActivationDoesNotDuplicateTask', async ({ page }) => {
+  const task = makeTask({ id: 'double-undo', title: 'Undo only once' });
+  await openBoard(page, [task]);
+  page.once('dialog', dialog => dialog.accept());
+  await taskCard(page, task.title).getByRole('button', { name: `Delete ${task.title}` }).click();
+  const undoButton = page.getByRole('button', { name: `Undo delete of ${task.title}` });
+  await undoButton.click();
+  await page.locator('#undo-delete-button').dispatchEvent('click');
+
+  await expect(taskCard(page, task.title)).toHaveCount(1);
+  await expect(page.locator('#undo-delete-message')).toHaveText('Undo is no longer available.');
+  const storedTasks = await page.evaluate(key => JSON.parse(localStorage.getItem(key)), STORAGE_KEY);
+  expect(storedTasks).toEqual([task]);
+  expect(new Set(storedTasks.map(savedTask => savedTask.id)).size).toBe(1);
+});
+
 test('filtersAndSortComposeWithoutChangingStoredTaskOrder', async ({ page }) => {
   const dates = await page.evaluate(() => {
     const futureDate = days => {

@@ -2,11 +2,13 @@
 import {
   createTask,
   deleteTask,
+  getPendingDeleteUndo,
   getDueDateStatus,
   getTasks,
   getVisibleTasks,
   setTasks,
   sortTasks,
+  undoLastDelete,
   updateTask
 } from '../scripts/tasks.js';
 import { makeTask } from './support/task-fixtures.js';
@@ -62,6 +64,111 @@ test.describe('task state operations', () => {
 
     expect(deleteTask('middle')).toBe(true);
     expect(getTasks()).toEqual([tasks[0], tasks[2]]);
+  });
+
+  test('deleteTaskCreatesSnapshotWithExactTaskAndUnderlyingIndex', () => {
+    const tasks = [makeTask({ id: 'first' }), makeTask({ id: 'middle', title: 'Deleted middle' }), makeTask({ id: 'last' })];
+    setTasks(tasks);
+
+    expect(deleteTask('middle')).toBe(true);
+    expect(getTasks().map(task => task.id)).toEqual(['first', 'last']);
+    expect(getPendingDeleteUndo()).toEqual({ task: tasks[1], index: 1 });
+  });
+
+  test('undoRestoresFirstMiddleAndLastTaskAtOriginalIndex', () => {
+    for (const index of [0, 1, 2]) {
+      const tasks = [makeTask({ id: 'first' }), makeTask({ id: 'middle' }), makeTask({ id: 'last' })];
+      setTasks(tasks);
+      const deleted = tasks[index];
+
+      expect(deleteTask(deleted.id)).toBe(true);
+      expect(undoLastDelete()).toEqual(deleted);
+      expect(getTasks()).toEqual(tasks);
+    }
+  });
+
+  test('deleteTwiceUndoRestoresOnlySecondTask', () => {
+    const tasks = [makeTask({ id: 'first' }), makeTask({ id: 'second' }), makeTask({ id: 'third' })];
+    setTasks(tasks);
+
+    deleteTask('first');
+    deleteTask('second');
+
+    expect(getPendingDeleteUndo()).toEqual({ task: tasks[1], index: 0 });
+    expect(undoLastDelete()).toEqual(tasks[1]);
+    expect(getTasks()).toEqual([tasks[1], tasks[2]]);
+  });
+
+  test('undoConsumesSnapshotAndSecondUndoIsNoOp', () => {
+    const task = makeTask({ id: 'undo-once' });
+    setTasks([task]);
+    deleteTask(task.id);
+
+    expect(undoLastDelete()).toEqual(task);
+    expect(undoLastDelete()).toBeNull();
+    expect(getTasks()).toEqual([task]);
+  });
+
+  test('deleteUnknownIdDoesNotReplacePendingUndo', () => {
+    const tasks = [makeTask({ id: 'first' }), makeTask({ id: 'second' })];
+    setTasks(tasks);
+    deleteTask('first');
+    const pending = getPendingDeleteUndo();
+
+    expect(deleteTask('missing')).toBe(false);
+    expect(getPendingDeleteUndo()).toEqual(pending);
+  });
+
+  test('setTasksInvalidatesPendingDeleteUndo', () => {
+    setTasks([makeTask({ id: 'deleted' })]);
+    deleteTask('deleted');
+    const replacement = makeTask({ id: 'replacement' });
+
+    setTasks([replacement]);
+
+    expect(getPendingDeleteUndo()).toBeNull();
+    expect(undoLastDelete()).toBeNull();
+    expect(getTasks()).toEqual([replacement]);
+  });
+
+  test('undoWithoutPendingSnapshotReturnsNull', () => {
+    expect(getPendingDeleteUndo()).toBeNull();
+    expect(undoLastDelete()).toBeNull();
+    expect(getTasks()).toEqual([]);
+  });
+
+  test('undoRejectsPendingTaskIdAlreadyPresent', () => {
+    const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+    setTasks([makeTask({ id: 'task-same-id', title: 'Deleted task' })]);
+    deleteTask('task-same-id');
+
+    try {
+      Object.defineProperty(globalThis, 'crypto', {
+        configurable: true,
+        value: { randomUUID: () => 'same-id' }
+      });
+      createTask({ title: 'Task with colliding generated ID' });
+
+      expect(undoLastDelete()).toBeNull();
+      expect(getTasks()).toHaveLength(1);
+      expect(getTasks()[0].title).toBe('Task with colliding generated ID');
+    } finally {
+      Object.defineProperty(globalThis, 'crypto', originalCrypto);
+    }
+  });
+
+  test('createAndUpdateDoNotMutatePendingDeleteSnapshot', () => {
+    const deleted = makeTask({ id: 'deleted', title: 'Original snapshot', dueDate: '2026-11-01' });
+    const other = makeTask({ id: 'other' });
+    setTasks([deleted, other]);
+    deleteTask(deleted.id);
+    const pending = getPendingDeleteUndo();
+
+    createTask({ title: 'New task' });
+    updateTask('other', { title: 'Updated other task', priority: 'high' });
+
+    expect(getPendingDeleteUndo()).toEqual(pending);
+    expect(getPendingDeleteUndo().task).toEqual(deleted);
   });
 });
 

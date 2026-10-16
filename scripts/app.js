@@ -4,11 +4,13 @@ import {
   getDueDateStatus,
   getTasks,
   getProgressSummary,
+  getPendingDeleteUndo,
   getTaskById,
   getTasksByStatus,
   getVisibleTasks,
   sortTasks,
   setTasks,
+  undoLastDelete,
   updateTask,
 } from "./tasks.js";
 import {
@@ -50,6 +52,9 @@ const storageMessage = document.querySelector("#storage-message");
 const exportTasksButton = document.querySelector("#export-tasks");
 const restoreFileInput = document.querySelector("#restore-file");
 const portabilityMessage = document.querySelector("#portability-message");
+const undoDeleteNotice = document.querySelector("#undo-delete-notice");
+const undoDeleteMessage = document.querySelector("#undo-delete-message");
+const undoDeleteButton = document.querySelector("#undo-delete-button");
 let editingTaskId = null;
 let isSubmitting = false;
 
@@ -320,6 +325,25 @@ function showPortabilityMessage(message) {
   portabilityMessage.hidden = !message;
 }
 
+function showUndoDeleteMessage(message, task = null) {
+  undoDeleteNotice.hidden = false;
+  undoDeleteMessage.textContent = message;
+  undoDeleteButton.hidden = !task;
+
+  if (task) {
+    undoDeleteButton.setAttribute("aria-label", `Undo delete of ${task.title}`);
+  } else {
+    undoDeleteButton.removeAttribute("aria-label");
+  }
+}
+
+function clearUndoDeleteNotice() {
+  undoDeleteNotice.hidden = true;
+  undoDeleteMessage.textContent = "";
+  undoDeleteButton.hidden = true;
+  undoDeleteButton.removeAttribute("aria-label");
+}
+
 function getLocalDateString(date = new Date()) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -350,6 +374,31 @@ exportTasksButton.addEventListener("click", () => {
     if (objectUrl) {
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
     }
+  }
+});
+
+undoDeleteButton.addEventListener("click", (event) => {
+  const shouldRestoreKeyboardFocus = event.detail === 0
+    && undoDeleteButton.matches(":focus-visible");
+  const restoredTask = undoLastDelete();
+  if (!restoredTask) {
+    showUndoDeleteMessage("Undo is no longer available.");
+    if (shouldRestoreKeyboardFocus) {
+      undoDeleteMessage.focus();
+    }
+    return;
+  }
+
+  const wasSaved = saveCurrentTasks();
+  renderDashboard(getTasks());
+  const message = wasSaved
+    ? "Task restored."
+    : `Task "${restoredTask.title}" restored for this session, but could not be saved and may not remain after reload.`;
+  showUndoDeleteMessage(message);
+
+  if (shouldRestoreKeyboardFocus) {
+    const editButton = getTaskActionButton(restoredTask.id, "edit");
+    (editButton || undoDeleteMessage).focus();
   }
 });
 
@@ -388,6 +437,7 @@ restoreFileInput.addEventListener("change", async () => {
     }
 
     setTasks(result.tasks);
+    clearUndoDeleteNotice();
     storageWritesAllowed = true;
     storageWriteFailed = false;
     showStorageMessage("");
@@ -548,15 +598,24 @@ tasksPanel.addEventListener("click", (event) => {
       : [];
     const deletedTaskIndex = visibleTaskIds.indexOf(taskId);
 
-    if (window.confirm(`Delete "${task.title}"? This cannot be undone.`)) {
+    if (window.confirm(`Delete "${task.title}"? You can undo this action.`)) {
       const wasDeleted = deleteTask(taskId);
+      let wasSaved = false;
       if (wasDeleted) {
-        saveCurrentTasks();
+        wasSaved = saveCurrentTasks();
       }
       if (editingTaskId === taskId) {
         resetTaskForm();
       }
       renderDashboard(getTasks());
+
+      const pendingUndo = wasDeleted ? getPendingDeleteUndo() : null;
+      if (pendingUndo) {
+        const message = wasSaved
+          ? `Deleted "${pendingUndo.task.title}". Undo is available.`
+          : `Deleted "${pendingUndo.task.title}" for this session. The change was not saved; Undo is available.`;
+        showUndoDeleteMessage(message, pendingUndo.task);
+      }
 
       if (shouldRestoreKeyboardFocus) {
         const nextTaskId = visibleTaskIds[deletedTaskIndex + 1]
