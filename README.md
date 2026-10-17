@@ -152,6 +152,12 @@ The automated suite checks:
 - HTTP module and stylesheet loading, server 404 handling, and path traversal rejection
 - Responsive overflow, control and card bounds, message bounds, and board columns at the viewports listed below
 
+## Continuous Integration and Deployment
+
+GitHub Actions validates pushes to `master` and pull requests targeting `master`. CI installs the locked npm dependencies and Playwright Chromium, runs the full `npm test` suite, checks the application JavaScript syntax, and checks whitespace in the changed commit range. Contributors can review the result in the repository's Actions tab and should wait for the validation job to pass before merging.
+
+After validation succeeds for a push to `master`, a separate job deploys `index.html`, `styles/`, and `scripts/` to GitHub Pages. The expected demo URL is <https://bayutrid.github.io/Focus-Board/>. To enable publishing, a repository administrator must set **Settings → Pages → Build and deployment → Source** to **GitHub Actions**. The demo is available after Pages is enabled and a successful deployment completes.
+
 ## Responsive verification
 
 Run the viewport checks with:
