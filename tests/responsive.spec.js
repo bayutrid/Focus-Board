@@ -38,6 +38,7 @@ async function assertViewportLayout(page, viewport, expectedColumns) {
       controls: [...document.querySelectorAll('input, textarea, select, button, form, .task-portability-controls, [role="status"]')]
         .filter(visible).map(rect),
       cards: [...document.querySelectorAll('.task-card')].map(rect),
+      statusControls: [...board.querySelectorAll('.task-card .task-status-select')].map(element => ({ control: rect(element), card: rect(element.closest('.task-card')) })),
       cardText: [...board.querySelectorAll(':scope > section')].flatMap(column => [...column.querySelectorAll('.task-card h4, .task-card > p, .task-card .task-details')].map(element => ({ column: rect(column), text: rect(element) })))
     };
   });
@@ -56,6 +57,10 @@ async function assertViewportLayout(page, viewport, expectedColumns) {
     const column = measurements.columns[index];
     expect(card.left, `card ${index} left at ${viewport.width}px`).toBeGreaterThanOrEqual(column.left);
     expect(card.right, `card ${index} right at ${viewport.width}px`).toBeLessThanOrEqual(column.right);
+  }
+  for (const [index, entry] of measurements.statusControls.entries()) {
+    expect(entry.control.left, `status select ${index} left within card at ${viewport.width}px`).toBeGreaterThanOrEqual(entry.card.left);
+    expect(entry.control.right, `status select ${index} right within card at ${viewport.width}px`).toBeLessThanOrEqual(entry.card.right);
   }
   for (const [index, entry] of measurements.cardText.entries()) {
     expect(entry.text.left, `card text ${index} left at ${viewport.width}px`).toBeGreaterThanOrEqual(entry.column.left);

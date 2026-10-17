@@ -16,6 +16,248 @@ function taskCard(page, title) {
   return page.locator('.task-card').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
 }
 
+async function changeCardStatus(page, task, nextStatus) {
+  const statusSelect = taskCard(page, task.title).getByRole('combobox', { name: `Status for ${task.title}` });
+  await expect(statusSelect).toBeVisible();
+  await statusSelect.selectOption(nextStatus);
+  return statusSelect;
+}
+
+async function expectStoredTaskStatusChange(page, originalTasks, taskId, nextStatus) {
+  const saved = await page.evaluate(key => JSON.parse(localStorage.getItem(key)), STORAGE_KEY);
+  expect(saved.map(task => task.id)).toEqual(originalTasks.map(task => task.id));
+  const taskIndex = originalTasks.findIndex(task => task.id === taskId);
+  const { updatedAt, ...originalFields } = originalTasks[taskIndex];
+  expect(saved[taskIndex]).toMatchObject({ ...originalFields, status: nextStatus });
+  expect(saved[taskIndex].updatedAt).not.toBe(originalTasks[taskIndex].updatedAt);
+}
+
+test('cardStatusSelectHasCurrentValueOptionsAndTaskSpecificName', async ({ page }) => {
+  const tasks = [
+    makeTask({ id: 'select-todo', title: 'Select Todo', status: 'todo' }),
+    makeTask({ id: 'select-doing', title: 'Select Doing', status: 'doing' }),
+    makeTask({ id: 'select-done', title: 'Select Done', status: 'done' })
+  ];
+  await openBoard(page, tasks);
+
+  for (const task of tasks) {
+    const statusSelect = taskCard(page, task.title).getByRole('combobox', { name: `Status for ${task.title}` });
+    await expect(statusSelect).toHaveValue(task.status);
+    await expect(statusSelect.locator('option')).toHaveText(['Todo', 'Doing', 'Done']);
+  }
+
+  await expect(page.locator('.task-badge.status-badge')).toHaveCount(0);
+  await expect(taskCard(page, 'Select Todo').getByText('Priority: Medium')).toBeVisible();
+});
+
+test('directStatusChangeTodoToDoingPreservesTaskFieldsAndStoredOrder', async ({ page }) => {
+  const tasks = [
+    makeTask({ id: 'status-before', title: 'Before transition', status: 'doing', priority: 'low' }),
+    makeTask({ id: 'status-target', title: 'Todo to Doing', status: 'todo', priority: 'high', dueDate: '2026-11-15' }),
+    makeTask({ id: 'status-after', title: 'After transition', status: 'done', description: 'Keep this field' })
+  ];
+  await openBoard(page, tasks);
+
+  await changeCardStatus(page, tasks[1], 'doing');
+
+  await expect(taskCard(page, tasks[1].title)).toBeVisible();
+  await expect(taskCard(page, tasks[1].title).getByRole('combobox', { name: `Status for ${tasks[1].title}` })).toHaveValue('doing');
+  await expect(taskCard(page, tasks[1].title).getByText('Priority: High')).toBeVisible();
+  await expect(taskCard(page, tasks[1].title)).toContainText('Nov 15, 2026');
+  await expect(page.locator('#doing-heading').locator('..').locator('.task-card').filter({
+    has: page.getByRole('heading', { name: tasks[1].title, exact: true })
+  })).toHaveCount(1);
+  await expect(page.locator('#task-status-change-message')).toContainText('saved');
+  await expectStoredTaskStatusChange(page, tasks, 'status-target', 'doing');
+});
+
+test('directStatusChangeDoingToDonePreservesTaskFieldsAndStoredOrder', async ({ page }) => {
+  const tasks = [
+    makeTask({ id: 'doing-first', title: 'Doing first', status: 'doing' }),
+    makeTask({ id: 'doing-target', title: 'Doing to Done', status: 'doing', description: 'Finish report', priority: 'high' }),
+    makeTask({ id: 'doing-last', title: 'Doing last', status: 'todo' })
+  ];
+  await openBoard(page, tasks);
+
+  await changeCardStatus(page, tasks[1], 'done');
+
+  await expect(page.locator('#done-heading').locator('..').locator('.task-card h4')).toContainText(tasks[1].title);
+  await expect(taskCard(page, tasks[1].title)).toContainText('Finish report');
+  await expect(taskCard(page, tasks[1].title).getByText('Priority: High')).toBeVisible();
+  await expectStoredTaskStatusChange(page, tasks, 'doing-target', 'done');
+});
+
+test('directStatusChangeDoneToTodoPreservesTaskFieldsAndStoredOrder', async ({ page }) => {
+  const tasks = [
+    makeTask({ id: 'done-first', title: 'Done first', status: 'done' }),
+    makeTask({ id: 'done-target', title: 'Done to Todo', status: 'done', dueDate: '2026-12-01', priority: 'low' }),
+    makeTask({ id: 'done-last', title: 'Done last', status: 'doing' })
+  ];
+  await openBoard(page, tasks);
+
+  await changeCardStatus(page, tasks[1], 'todo');
+
+  await expect(page.locator('#todo-heading').locator('..').locator('.task-card h4')).toContainText(tasks[1].title);
+  await expect(taskCard(page, tasks[1].title)).toContainText('Dec 1, 2026');
+  await expect(taskCard(page, tasks[1].title).getByText('Priority: Low')).toBeVisible();
+  await expectStoredTaskStatusChange(page, tasks, 'done-target', 'todo');
+});
+
+test('directStatusChangePersistsAcrossReload', async ({ page }) => {
+  const task = makeTask({ id: 'status-reload', title: 'Persist direct status', status: 'todo' });
+  await openBoard(page, [task]);
+
+  await changeCardStatus(page, task, 'doing');
+  await page.reload();
+
+  await expect(taskCard(page, task.title).getByRole('combobox', { name: `Status for ${task.title}` })).toHaveValue('doing');
+  await expect(page.locator('#doing-heading').locator('..').locator('.task-card h4')).toContainText(task.title);
+});
+
+test('statusChangeSaveFailureKeepsSessionStateAndReportsNotSaved', async ({ page }) => {
+  const task = makeTask({ id: 'status-save-failure', title: 'Unsaved status update', status: 'todo' });
+  await openBoard(page, [task]);
+  const savedBefore = await page.evaluate(key => localStorage.getItem(key), STORAGE_KEY);
+  await page.evaluate(key => {
+    const originalSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (storageKey, value) {
+      if (storageKey === key) throw new DOMException('Storage is full', 'QuotaExceededError');
+      return originalSetItem.call(this, storageKey, value);
+    };
+  }, STORAGE_KEY);
+
+  await changeCardStatus(page, task, 'doing');
+
+  await expect(taskCard(page, task.title).getByRole('combobox', { name: `Status for ${task.title}` })).toHaveValue('doing');
+  await expect(page.locator('#task-status-change-message')).toContainText(/not saved/i);
+  expect(await page.evaluate(key => localStorage.getItem(key), STORAGE_KEY)).toBe(savedBefore);
+});
+
+test('statusChangePreservesActiveSearchPriorityDueDateAndDueDateSort', async ({ page }) => {
+  const dates = await page.evaluate(() => {
+    const dateAfter = days => {
+      const date = new Date();
+      date.setDate(date.getDate() + days);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    };
+    return { soon: dateAfter(2), later: dateAfter(5) };
+  });
+  const tasks = [
+    makeTask({ id: 'release-later', title: 'Release followup', status: 'doing', priority: 'high', dueDate: dates.later }),
+    makeTask({ id: 'release-target', title: 'Release migration', status: 'todo', priority: 'high', dueDate: dates.soon })
+  ];
+  await openBoard(page, tasks);
+  await page.locator('#task-search').fill('Release');
+  await page.locator('#priority-filter').selectOption('high');
+  await page.locator('#due-date-filter').selectOption('upcoming');
+  await page.locator('#task-sort').selectOption('due-date');
+
+  await changeCardStatus(page, tasks[1], 'doing');
+
+  await expect(page.locator('#task-search')).toHaveValue('Release');
+  await expect(page.locator('#status-filter')).toHaveValue('all');
+  await expect(page.locator('#priority-filter')).toHaveValue('high');
+  await expect(page.locator('#due-date-filter')).toHaveValue('upcoming');
+  await expect(page.locator('#task-sort')).toHaveValue('due-date');
+  await expect(page.locator('#doing-heading').locator('..').locator('.task-card h4')).toHaveText(['Release migration', 'Release followup']);
+  await expectStoredTaskStatusChange(page, tasks, 'release-target', 'doing');
+});
+
+test('statusChangePreservesPrioritySortOrder', async ({ page }) => {
+  const tasks = [
+    makeTask({ id: 'priority-medium', title: 'Priority sort medium', status: 'todo', priority: 'medium' }),
+    makeTask({ id: 'priority-high', title: 'Priority sort high', status: 'doing', priority: 'high' })
+  ];
+  await openBoard(page, tasks);
+  await page.locator('#task-sort').selectOption('priority');
+
+  await changeCardStatus(page, tasks[0], 'doing');
+
+  await expect(page.locator('#task-sort')).toHaveValue('priority');
+  await expect(page.locator('#doing-heading').locator('..').locator('.task-card h4')).toHaveText(['Priority sort high', 'Priority sort medium']);
+  await expectStoredTaskStatusChange(page, tasks, 'priority-medium', 'doing');
+});
+
+test('statusChangePreservesDefaultOrderInDestinationColumn', async ({ page }) => {
+  const tasks = [
+    makeTask({ id: 'default-before', title: 'Default before', status: 'doing' }),
+    makeTask({ id: 'default-target', title: 'Default target', status: 'todo' }),
+    makeTask({ id: 'default-after', title: 'Default after', status: 'doing' })
+  ];
+  await openBoard(page, tasks);
+
+  await changeCardStatus(page, tasks[1], 'doing');
+
+  await expect(page.locator('#task-sort')).toHaveValue('default');
+  await expect(page.locator('#doing-heading').locator('..').locator('.task-card h4')).toHaveText(['Default before', 'Default target', 'Default after']);
+  await expectStoredTaskStatusChange(page, tasks, 'default-target', 'doing');
+});
+
+test('statusChangeHidesTaskUnderActiveStatusFilter', async ({ page }) => {
+  const task = makeTask({ id: 'status-filter-hide', title: 'Status filter hides task', status: 'todo' });
+  await openBoard(page, [task]);
+  await page.locator('#status-filter').selectOption('todo');
+
+  await changeCardStatus(page, task, 'doing');
+
+  await expect(page.locator('#status-filter')).toHaveValue('todo');
+  await expect(taskCard(page, task.title)).toHaveCount(0);
+  await expect(page.locator('#task-status-change-message')).toContainText('hidden by the current filters');
+  await expectStoredTaskStatusChange(page, [task], task.id, 'doing');
+});
+
+test('statusChangeKeepsCombinedFiltersWhenStatusFilterHidesTask', async ({ page }) => {
+  const dates = await page.evaluate(() => {
+    const dateAfter = days => {
+      const date = new Date();
+      date.setDate(date.getDate() + days);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    };
+    return { soon: dateAfter(2), later: dateAfter(5) };
+  });
+  const tasks = [
+    makeTask({ id: 'combined-target', title: 'Combined filters target', status: 'todo', priority: 'high', dueDate: dates.soon }),
+    makeTask({ id: 'combined-sibling', title: 'Combined filters sibling', status: 'todo', priority: 'high', dueDate: dates.later })
+  ];
+  await openBoard(page, tasks);
+  await page.locator('#task-search').fill('Combined filters');
+  await page.locator('#status-filter').selectOption('todo');
+  await page.locator('#priority-filter').selectOption('high');
+  await page.locator('#due-date-filter').selectOption('upcoming');
+  await page.locator('#task-sort').selectOption('due-date');
+  await expect(page.locator('#todo-heading').locator('..').locator('.task-card h4')).toHaveText(['Combined filters target', 'Combined filters sibling']);
+
+  await changeCardStatus(page, tasks[0], 'doing');
+
+  await expect(page.locator('#task-search')).toHaveValue('Combined filters');
+  await expect(page.locator('#status-filter')).toHaveValue('todo');
+  await expect(page.locator('#priority-filter')).toHaveValue('high');
+  await expect(page.locator('#due-date-filter')).toHaveValue('upcoming');
+  await expect(page.locator('#task-sort')).toHaveValue('due-date');
+  await expect(taskCard(page, tasks[0].title)).toHaveCount(0);
+  await expect(page.locator('#todo-heading').locator('..').locator('.task-card h4')).toHaveText(['Combined filters sibling']);
+  await expect(page.locator('#task-status-change-message')).toContainText('hidden by the current filters');
+  await expectStoredTaskStatusChange(page, tasks, tasks[0].id, 'doing');
+});
+
+test('statusChangeToDoneHidesTaskUnderDueDateFilter', async ({ page }) => {
+  const dueDate = await page.evaluate(() => {
+    const date = new Date();
+    date.setDate(date.getDate() + 2);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  });
+  const task = makeTask({ id: 'due-filter-hide', title: 'Due filter hides done task', status: 'todo', dueDate });
+  await openBoard(page, [task]);
+  await page.locator('#due-date-filter').selectOption('upcoming');
+
+  await changeCardStatus(page, task, 'done');
+
+  await expect(page.locator('#due-date-filter')).toHaveValue('upcoming');
+  await expect(taskCard(page, task.title)).toHaveCount(0);
+  await expect(page.locator('#task-status-change-message')).toContainText('hidden by the current filters');
+  await expectStoredTaskStatusChange(page, [task], task.id, 'done');
+});
+
 test('createTaskPersistsAllEnteredFieldsAcrossReload', async ({ page }) => {
   await openBoard(page);
   await page.locator('#task-title').fill('Prepare portfolio review');

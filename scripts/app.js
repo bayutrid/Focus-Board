@@ -48,6 +48,7 @@ const sortSelect = searchAndFiltersForm.elements.sort;
 const clearFiltersButton = document.querySelector("#clear-task-filters");
 const activeFilterSummary = document.querySelector("#active-filter-summary");
 const taskResultsMessage = document.querySelector("#task-results-message");
+const taskStatusChangeMessage = document.querySelector("#task-status-change-message");
 const storageMessage = document.querySelector("#storage-message");
 const exportTasksButton = document.querySelector("#export-tasks");
 const restoreFileInput = document.querySelector("#restore-file");
@@ -87,16 +88,25 @@ function createTaskCard(task) {
   badges.setAttribute("role", "group");
   badges.setAttribute("aria-label", "Task status and priority");
 
-  const statusBadge = document.createElement("span");
-  statusBadge.className = `task-badge status-badge status-${task.status}`;
-  statusBadge.textContent = task.status.charAt(0).toUpperCase() + task.status.slice(1);
+  const statusSelect = document.createElement("select");
+  statusSelect.className = `task-status-select status-${task.status}`;
+  statusSelect.dataset.action = "status-change";
+  statusSelect.dataset.taskId = task.id;
+  statusSelect.setAttribute("aria-label", `Status for ${task.title}`);
+  ["todo", "doing", "done"].forEach((status) => {
+    const option = document.createElement("option");
+    option.value = status;
+    option.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+    statusSelect.append(option);
+  });
+  statusSelect.value = task.status;
 
   const priorityBadge = document.createElement("span");
   priorityBadge.className = `task-badge priority-badge priority-${task.priority}`;
   const formattedPriority = task.priority.charAt(0).toUpperCase() + task.priority.slice(1);
   priorityBadge.textContent = `Priority: ${formattedPriority}`;
 
-  badges.append(statusBadge, priorityBadge);
+  badges.append(statusSelect, priorityBadge);
   cardHeader.append(title, badges);
   card.append(cardHeader);
 
@@ -285,6 +295,12 @@ function getTaskActionButton(taskId, action) {
   return Array.from(tasksPanel.querySelectorAll(`button[data-action="${action}"][data-task-id]`))
     .find((button) => button.dataset.taskId === taskId) || null;
 }
+
+function getTaskStatusSelect(taskId) {
+  return Array.from(tasksPanel.querySelectorAll('select[data-action="status-change"][data-task-id]'))
+    .find((select) => select.dataset.taskId === taskId) || null;
+}
+
 searchAndFiltersForm.addEventListener("submit", (event) => {
   event.preventDefault();
 });
@@ -323,6 +339,11 @@ function showStorageMessage(message) {
 function showPortabilityMessage(message) {
   portabilityMessage.textContent = message;
   portabilityMessage.hidden = !message;
+}
+
+function showTaskStatusChangeMessage(message) {
+  taskStatusChangeMessage.textContent = message;
+  taskStatusChangeMessage.hidden = !message;
 }
 
 function showUndoDeleteMessage(message, task = null) {
@@ -374,6 +395,57 @@ exportTasksButton.addEventListener("click", () => {
     if (objectUrl) {
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
     }
+  }
+});
+
+tasksPanel.addEventListener("change", (event) => {
+  const select = event.target.closest('select[data-action="status-change"][data-task-id]');
+  if (!select || !tasksPanel.contains(select)) {
+    return;
+  }
+
+  const shouldRestoreKeyboardFocus = select.matches(":focus-visible");
+  const task = getTaskById(select.dataset.taskId);
+  if (!task) {
+    renderDashboard(getTasks());
+    showTaskStatusChangeMessage("That task is no longer available. The task list was refreshed.");
+    if (shouldRestoreKeyboardFocus) {
+      taskStatusChangeMessage.focus();
+    }
+    return;
+  }
+
+  const updatedTask = updateTask(task.id, {
+    title: task.title,
+    description: task.description,
+    status: select.value,
+    priority: task.priority,
+    dueDate: task.dueDate,
+  });
+
+  if (!updatedTask) {
+    renderDashboard(getTasks());
+    showTaskStatusChangeMessage("That task is no longer available. The task list was refreshed.");
+    if (shouldRestoreKeyboardFocus) {
+      taskStatusChangeMessage.focus();
+    }
+    return;
+  }
+
+  const wasSaved = saveCurrentTasks();
+  renderDashboard(getTasks());
+  const nextSelect = getTaskStatusSelect(updatedTask.id);
+  const statusLabel = updatedTask.status.charAt(0).toUpperCase() + updatedTask.status.slice(1);
+  const saveMessage = wasSaved
+    ? `Status for "${updatedTask.title}" changed to ${statusLabel} and saved.`
+    : `Status for "${updatedTask.title}" changed to ${statusLabel} for this session only; it was not saved.`;
+  const message = nextSelect
+    ? saveMessage
+    : `${saveMessage} The task is hidden by the current filters.`;
+  showTaskStatusChangeMessage(message);
+
+  if (shouldRestoreKeyboardFocus) {
+    (nextSelect || taskStatusChangeMessage).focus();
   }
 });
 
