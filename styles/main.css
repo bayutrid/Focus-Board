@@ -167,6 +167,19 @@ button:focus-visible {
   border-radius: 9px;
 }
 
+#task-status-change-message {
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+  color: #354256;
+  background: var(--color-accent-soft);
+  border-radius: 9px;
+  overflow-wrap: anywhere;
+}
+
+#task-status-change-message[hidden] {
+  display: none;
+}
+
 #active-filter-summary {
   margin: 0 0 1rem;
   padding: 0.75rem 1rem;
@@ -464,6 +477,24 @@ a:focus-visible {
   font-size: 0.75rem;
   font-weight: 700;
   line-height: 1.25;
+}
+
+.task-status-select {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 36px;
+  padding: 0.2rem 1.5rem 0.2rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.task-status-select:focus-visible {
+  outline: 3px solid rgb(49 94 232 / 45%);
+  outline-offset: 2px;
 }
 
 .status-todo {

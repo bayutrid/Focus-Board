@@ -7,6 +7,7 @@ FocusBoard is a beginner-friendly personal productivity dashboard for creating a
 ## Features
 
 - Create, edit, and delete tasks
+- Change a task's status directly from its task card
 - Undo the most recently deleted task during the current page session; Undo does not persist across reloads
 - Set a task status, priority, and optional due date
 - See overdue, due today, and upcoming labels for open tasks due within seven days
@@ -172,10 +173,11 @@ At each size, the suite checks for horizontal overflow, verifies that forms, con
 1. Start the app and add a task with a description, status, priority, and due date. Reload and confirm it remains.
 2. Use the keyboard to reach a task's Edit button and activate it. Confirm focus moves to the Title field. Cancel and confirm focus returns to the same Edit button.
 3. Edit a task, change its status, and save. Confirm the task moves to the correct column and focus remains in the form.
-4. Use the keyboard to delete a task and confirm the dialog. Confirm focus moves to the next task, the previous task, or the column heading when the column becomes empty. Repeat and cancel the dialog.
-5. Create two tasks with different status, priority, due-date, and description values. Delete one and confirm, then choose Undo. With Default sort selected, verify its fields and order return. Reload and confirm the task remains but the Undo action is no longer available.
-6. Apply Search, Status, Priority, Due Date, and Sort controls, then activate Clear filters. Confirm focus remains on Clear filters and the task list is unchanged.
-7. Export tasks and confirm a JSON file downloads. Restore that file, confirm replacement, and reload to verify persistence. Also try cancelling a restore and selecting an invalid JSON file.
+4. Use a task card's Status control with both keyboard and pointer. Confirm the task moves to the chosen column, the other task fields remain unchanged, the current filters and sort remain active, and the change persists after reload.
+5. Use the keyboard to delete a task and confirm the dialog. Confirm focus moves to the next task, the previous task, or the column heading when the column becomes empty. Repeat and cancel the dialog.
+6. Create two tasks with different status, priority, due-date, and description values. Delete one and confirm, then choose Undo. With Default sort selected, verify its fields and order return. Reload and confirm the task remains but the Undo action is no longer available.
+7. Apply Search, Status, Priority, Due Date, and Sort controls, then activate Clear filters. Confirm focus remains on Clear filters and the task list is unchanged.
+8. Export tasks and confirm a JSON file downloads. Restore that file, confirm replacement, and reload to verify persistence. Also try cancelling a restore and selecting an invalid JSON file.
 
 ## Troubleshooting
 
@@ -187,4 +189,4 @@ At each size, the suite checks for horizontal overflow, verifies that forms, con
 
 ## Current Status
 
-FocusBoard is an ongoing portfolio project at the MVP stage. Its core task management, filtering, sorting, local JSON export and restore, keyboard focus recovery, reproducible automated tests, and responsive verification are implemented. Undo delete and progress percentage are not currently available.
+FocusBoard is an ongoing portfolio project at the MVP stage. Its core task management, filtering, sorting, local JSON export and restore, keyboard focus recovery, reproducible automated tests, responsive verification, last-delete Undo, and direct task-card status changes are implemented. Progress percentage is not currently available.

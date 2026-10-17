@@ -208,3 +208,41 @@ test('mouseUndoDoesNotForceFocus', async ({ page }) => {
   expect(await card(page, task.title).getByRole('button', { name: `Edit ${task.title}` }).evaluate(element => element === document.activeElement)).toBe(false);
   expect(await page.locator('#undo-delete-message').evaluate(element => element === document.activeElement)).toBe(false);
 });
+
+test('keyboardStatusChangeRestoresFocusToUpdatedSelect', async ({ page }) => {
+  const task = makeTask({ id: 'keyboard-status', title: 'Keyboard status target', status: 'todo' });
+  await openBoard(page, [task]);
+  const statusSelect = card(page, task.title).getByRole('combobox', { name: `Status for ${task.title}` });
+  await statusSelect.focus();
+  await statusSelect.press('ArrowDown');
+
+  const updatedSelect = card(page, task.title).getByRole('combobox', { name: `Status for ${task.title}` });
+  await expect(updatedSelect).toHaveValue('doing');
+  await expect(updatedSelect).toBeFocused();
+});
+
+test('keyboardStatusChangeUsesMessageFallbackWhenFilteredOut', async ({ page }) => {
+  const task = makeTask({ id: 'keyboard-status-hidden', title: 'Keyboard status hidden', status: 'todo' });
+  await openBoard(page, [task]);
+  await page.locator('#status-filter').selectOption('todo');
+  const statusSelect = card(page, task.title).getByRole('combobox', { name: `Status for ${task.title}` });
+  await statusSelect.focus();
+  await statusSelect.press('ArrowDown');
+
+  await expect(page.locator('#status-filter')).toHaveValue('todo');
+  await expect(card(page, task.title)).toHaveCount(0);
+  await expect(page.locator('#task-status-change-message')).toBeFocused();
+  await expect(page.locator('#task-status-change-message')).toContainText(task.title);
+  await expect(page.locator('#task-status-change-message')).toContainText('filter');
+});
+
+test('pointerStatusChangeDoesNotForceAppFocus', async ({ page }) => {
+  const task = makeTask({ id: 'pointer-status', title: 'Pointer status target', status: 'todo' });
+  await openBoard(page, [task]);
+  const statusSelect = card(page, task.title).getByRole('combobox', { name: `Status for ${task.title}` });
+  await statusSelect.selectOption('doing');
+
+  await expect(card(page, task.title).getByRole('combobox', { name: `Status for ${task.title}` })).toHaveValue('doing');
+  await expect(page.locator('#task-status-change-message')).not.toBeFocused();
+  await expect(card(page, task.title).getByRole('combobox', { name: `Status for ${task.title}` })).not.toBeFocused();
+});
